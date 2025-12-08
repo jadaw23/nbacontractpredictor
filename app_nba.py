@@ -80,22 +80,22 @@ def get_team_colors(team_abbrev):
 # Custom CSS for styling with NBA theme
 st.markdown("""
     <style>
-    /* NBA themed background */
+    /* NBA themed background - lighter version */
     .stApp {
-        background: linear-gradient(135deg, #1D428A 0%, #C8102E 100%);
+        background: linear-gradient(135deg, #4A90E2 0%, #FF6B6B 100%);
     }
     
     /* Main content area */
     .main .block-container {
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.98);
         border-radius: 15px;
         padding: 2rem;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     }
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1D428A 0%, #C8102E 100%);
+        background: linear-gradient(180deg, #5BA3F5 0%, #FF7B7B 100%);
     }
     
     [data-testid="stSidebar"] .stMarkdown {
@@ -103,7 +103,7 @@ st.markdown("""
     }
     
     .metric-card {
-        background: linear-gradient(135deg, #1D428A 0%, #C8102E 100%);
+        background: linear-gradient(135deg, #4A90E2 0%, #FF6B6B 100%);
         padding: 20px;
         border-radius: 10px;
         color: white;
