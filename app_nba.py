@@ -207,6 +207,27 @@ def load_data():
     df['player_value_index'] = df['pts'] * 0.4 + df['reb'] * 0.3 + df['assists'] * 0.3
     return df
 
+
+def format_player_metric(player_data, key, fmt="{:.1f}", default="N/A"):
+    """Format a player's metric safely, returning a friendly fallback when missing."""
+    if key in player_data.index and pd.notnull(player_data[key]):
+        try:
+            return fmt.format(player_data[key])
+        except Exception:
+            pass
+    return default
+
+
+def get_numeric_stat(player_data, key, default=0):
+    """Safely fetch a numeric stat for visualizations without raising KeyError."""
+    try:
+        value = player_data.get(key, default)
+        if pd.notnull(value):
+            return value
+    except Exception:
+        pass
+    return default
+
 def generate_sql_query(natural_language_query, df_columns):
     query_lower = natural_language_query.lower()
     
@@ -529,22 +550,22 @@ elif page == "Player Search":
                         st.markdown("### 📊 Performance Statistics")
                         
                         perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)
-                        
+
                         with perf_col1:
-                            st.metric("Points Per Game", f"{player_data['pts']:.1f}", help="Average points scored per game")
-                            st.metric("Games Played", f"{player_data['gp']:.0f}")
-                        
+                            st.metric("Points Per Game", format_player_metric(player_data, 'pts'), help="Average points scored per game")
+                            st.metric("Games Played", format_player_metric(player_data, 'gp', fmt="{:.0f}"))
+
                         with perf_col2:
-                            st.metric("Rebounds Per Game", f"{player_data['reb']:.1f}")
-                            st.metric("Minutes Played", f"{player_data['min']:.1f}")
-                        
+                            st.metric("Rebounds Per Game", format_player_metric(player_data, 'reb'))
+                            st.metric("Minutes Played", format_player_metric(player_data, 'min'))
+
                         with perf_col3:
-                            st.metric("Assists Per Game", f"{player_data['assists']:.1f}")
-                            st.metric("Field Goal %", f"{player_data['fgp']:.1f}%")
-                        
+                            st.metric("Assists Per Game", format_player_metric(player_data, 'assists'))
+                            st.metric("Field Goal %", format_player_metric(player_data, 'fgp', fmt="{:.1f}%"))
+
                         with perf_col4:
-                            st.metric("3-Point %", f"{player_data['tpp']:.1f}%")
-                            st.metric("Free Throw %", f"{player_data['ftp']:.1f}%")
+                            st.metric("3-Point %", format_player_metric(player_data, 'tpp', fmt="{:.1f}%"))
+                            st.metric("Free Throw %", format_player_metric(player_data, 'ftp', fmt="{:.1f}%"))
                         
                         # Value Analysis
                         st.markdown("### 💰 Contract Value Analysis")
@@ -581,15 +602,15 @@ elif page == "Player Search":
                         
                         # Performance Radar Chart
                         st.markdown("### 🎯 Performance Profile")
-                        
+
                         categories = ['Points', 'Rebounds', 'Assists', 'FG%', '3P%', 'FT%']
                         values = [
                             (player_data['pts'] / df['pts'].max()) * 100,
                             (player_data['reb'] / df['reb'].max()) * 100,
                             (player_data['assists'] / df['assists'].max()) * 100,
-                            player_data['fgp'],
-                            player_data['tpp'],
-                            player_data['ftp']
+                            get_numeric_stat(player_data, 'fgp'),
+                            get_numeric_stat(player_data, 'tpp'),
+                            get_numeric_stat(player_data, 'ftp')
                         ]
                         
                         fig = go.Figure()
