@@ -84,12 +84,21 @@ def get_player_image_url(player_name, player_id=None):
 def get_team_colors(team_abbrev):
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
+
+def supports_plotly_click():
+    try:
+        return 'on_click' in inspect.signature(st.plotly_chart).parameters
+    except Exception:
+        return False
+
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'selected_player' not in st.session_state:
     st.session_state.selected_player = None
 if 'plot_click_player' not in st.session_state:
     st.session_state.plot_click_player = None
+if 'analytics_click_player' not in st.session_state:
+    st.session_state.analytics_click_player = None
 
 # Custom CSS
 st.markdown("""
@@ -548,12 +557,6 @@ elif page == "Player Search":
                     search_fig.update_traces(customdata=filtered_df['player_name'])
                     search_fig.update_layout(height=500)
 
-                    def supports_plotly_click():
-                        try:
-                            return 'on_click' in inspect.signature(st.plotly_chart).parameters
-                        except Exception:
-                            return False
-
                     def on_player_click(trace, points, state):
                         if points.point_inds:
                             idx = points.point_inds[0]
@@ -600,16 +603,22 @@ elif page == "Analytics":
         st.markdown("### Filter by Team")
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
         selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
-        
+
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
             plot_df = df[df['team_name'] == selected_team_analytics].copy()
-        
+
+        if (
+            st.session_state.analytics_click_player
+            and st.session_state.analytics_click_player not in plot_df['player_name'].values
+        ):
+            st.session_state.analytics_click_player = None
+
         st.markdown("---")
         st.markdown("### Dollars per Point vs Dollars per Game")
         st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
-        
+
         fig = px.scatter(
             plot_df,
             x='dollars_per_point',
@@ -634,7 +643,8 @@ elif page == "Analytics":
                 'salary_usd': 'Salary'
             }
         )
-        
+
+        fig.update_traces(customdata=plot_df['player_name'])
         fig.update_layout(
             height=600,
             xaxis_title="Dollars per Point ($)",
@@ -642,7 +652,38 @@ elif page == "Analytics":
             legend_title="Team",
             font=dict(size=12)
         )
-        st.plotly_chart(fig, use_container_width=True)
+
+        def on_analytics_click(trace, points, state):
+            if points.point_inds:
+                idx = points.point_inds[0]
+                st.session_state.analytics_click_player = trace.customdata[idx]
+
+        plot_kwargs = {"use_container_width": True}
+        if supports_plotly_click():
+            plot_kwargs["on_click"] = on_analytics_click
+
+        st.plotly_chart(fig, **plot_kwargs)
+
+        clicked_player = st.session_state.analytics_click_player
+        if clicked_player and clicked_player in plot_df['player_name'].values:
+            player_row = plot_df[plot_df['player_name'] == clicked_player].iloc[0]
+            team_colors = get_team_colors(player_row['team_name'])
+
+            st.markdown("#### Selected Player")
+            st.markdown(f"""
+                <div class='player-card'>
+                    <div class='player-header'>
+                        <img src='{get_player_image_url(clicked_player, player_row['player_id'])}' class='player-photo-large'>
+                        <div>
+                            <h2 style='margin: 0; color: {team_colors["primary"]};'>{clicked_player}</h2>
+                            <h4 style='margin: 8px 0; color: #666;'>{player_row['team_name']}</h4>
+                            <p style='margin: 0; color: #4A90E2;'>Salary per Game: ${player_row['dollars_per_game']:,.2f}</p>
+                            <p style='margin: 0; color: #4A90E2;'>Salary per Point: ${player_row['dollars_per_point']:,.2f}</p>
+                            <p style='margin: 10px 0 0; color: #555;'>PPG: {player_row['pts']:.1f} • RPG: {player_row['reb']:.1f} • APG: {player_row['assists']:.1f}</p>
+                        </div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
 
 # ============================================
