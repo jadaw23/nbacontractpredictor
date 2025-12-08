@@ -211,9 +211,37 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def ensure_salary_efficiency_columns(df):
+    """Guarantee salary efficiency metrics exist and are numeric for visualizations."""
+    numeric_cols = ['salary_usd', 'pts', 'gp']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    if 'dollars_per_point' in df.columns:
+        df['dollars_per_point'] = pd.to_numeric(df['dollars_per_point'], errors='coerce')
+    base_points = df['pts'].replace({0: pd.NA}) if 'pts' in df.columns else pd.NA
+    df['dollars_per_point'] = df.get('dollars_per_point', pd.NA).combine_first(
+        df.get('salary_usd', pd.NA) / base_points
+    )
+
+    if 'dollars_per_game' in df.columns:
+        df['dollars_per_game'] = pd.to_numeric(df['dollars_per_game'], errors='coerce')
+    base_games = df['gp'].replace({0: pd.NA}) if 'gp' in df.columns else pd.NA
+    df['dollars_per_game'] = df.get('dollars_per_game', pd.NA).combine_first(
+        df.get('salary_usd', pd.NA) / base_games
+    )
+
+    df['dollars_per_point'] = df['dollars_per_point'].fillna(0)
+    df['dollars_per_game'] = df['dollars_per_game'].fillna(0)
+
+    return df
+
+
 @st.cache_data
 def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
+    df = ensure_salary_efficiency_columns(df)
     return df
 
 
