@@ -686,7 +686,7 @@ with col3:
 # ============================================
 # LLM CHAT
 # ============================================
-elif page == "LLM Chat":
+if page == "LLM Chat":
     st.markdown("# 💬 Natural Language Query Interface")
     st.markdown("### Ask questions about NBA data in plain English")
     st.markdown("---")
