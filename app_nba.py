@@ -77,11 +77,33 @@ def get_team_colors(team_abbrev):
     """Get team colors from abbreviation"""
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
-# Custom CSS for styling
+# Custom CSS for styling with NBA theme
 st.markdown("""
     <style>
+    /* NBA themed background */
+    .stApp {
+        background: linear-gradient(135deg, #1D428A 0%, #C8102E 100%);
+    }
+    
+    /* Main content area */
+    .main .block-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1D428A 0%, #C8102E 100%);
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown {
+        color: white;
+    }
+    
     .metric-card {
-        background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%);
+        background: linear-gradient(135deg, #1D428A 0%, #C8102E 100%);
         padding: 20px;
         border-radius: 10px;
         color: white;
