@@ -3,10 +3,10 @@
 # ITOM6265 - Database Project
 # ============================================
 
+import inspect
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import json
 import re
 from datetime import datetime
@@ -65,18 +65,40 @@ PLAYER_IMAGES = {
     'Embiid Joel': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203954.png',
 }
 
-def get_player_image_url(player_name):
+PLAYER_ID_MAP = {}
+
+
+def get_player_image_url(player_name, player_id=None):
     if player_name in PLAYER_IMAGES:
         return PLAYER_IMAGES[player_name]
+
+    resolved_id = player_id
+    if resolved_id is None and PLAYER_ID_MAP:
+        resolved_id = PLAYER_ID_MAP.get(player_name)
+
+    if resolved_id is not None:
+        return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{int(resolved_id)}.png"
+
     return f"https://ui-avatars.com/api/?name={player_name.replace(' ', '+')}&size=400&background=4A90E2&color=fff&bold=true&font-size=0.4"
 
 def get_team_colors(team_abbrev):
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
+
+def supports_plotly_click():
+    try:
+        return 'on_click' in inspect.signature(st.plotly_chart).parameters
+    except Exception:
+        return False
+
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'selected_player' not in st.session_state:
     st.session_state.selected_player = None
+if 'plot_click_player' not in st.session_state:
+    st.session_state.plot_click_player = None
+if 'analytics_click_player' not in st.session_state:
+    st.session_state.analytics_click_player = None
 
 # Custom CSS
 st.markdown("""
@@ -189,12 +211,59 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def ensure_salary_efficiency_columns(df):
+    """Guarantee salary efficiency metrics exist and are numeric for visualizations."""
+    numeric_cols = ['salary_usd', 'pts', 'gp']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    if 'dollars_per_point' in df.columns:
+        df['dollars_per_point'] = pd.to_numeric(df['dollars_per_point'], errors='coerce')
+    base_points = df['pts'].replace({0: pd.NA}) if 'pts' in df.columns else pd.NA
+    df['dollars_per_point'] = df.get('dollars_per_point', pd.NA).combine_first(
+        df.get('salary_usd', pd.NA) / base_points
+    )
+
+    if 'dollars_per_game' in df.columns:
+        df['dollars_per_game'] = pd.to_numeric(df['dollars_per_game'], errors='coerce')
+    base_games = df['gp'].replace({0: pd.NA}) if 'gp' in df.columns else pd.NA
+    df['dollars_per_game'] = df.get('dollars_per_game', pd.NA).combine_first(
+        df.get('salary_usd', pd.NA) / base_games
+    )
+
+    df['dollars_per_point'] = df['dollars_per_point'].fillna(0)
+    df['dollars_per_game'] = df['dollars_per_game'].fillna(0)
+
+    return df
+
+
 @st.cache_data
 def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
-    df['contract_efficiency'] = (df['pts'] + df['reb'] + df['assists']) / (df['salary_usd'] / 1000000)
-    df['player_value_index'] = df['pts'] * 0.4 + df['reb'] * 0.3 + df['assists'] * 0.3
+    df = ensure_salary_efficiency_columns(df)
     return df
+
+
+def format_player_metric(player_data, key, fmt="{:.1f}", default="N/A"):
+    """Format a player's metric safely, returning a friendly fallback when missing."""
+    if key in player_data.index and pd.notnull(player_data[key]):
+        try:
+            return fmt.format(player_data[key])
+        except Exception:
+            pass
+    return default
+
+
+def get_numeric_stat(player_data, key, default=0):
+    """Safely fetch a numeric stat for visualizations without raising KeyError."""
+    try:
+        value = player_data.get(key, default)
+        if pd.notnull(value):
+            return value
+    except Exception:
+        pass
+    return default
 
 def generate_sql_query(natural_language_query, df_columns):
     query_lower = natural_language_query.lower()
@@ -218,9 +287,6 @@ def generate_sql_query(natural_language_query, df_columns):
     
     elif 'team' in query_lower and 'highest' in query_lower:
         return "SELECT team_name, AVG(pts) as avg_pts FROM players GROUP BY team_name ORDER BY avg_pts DESC LIMIT 1", None
-    
-    elif 'efficient' in query_lower or 'value' in query_lower:
-        return "SELECT player_name, contract_efficiency FROM players ORDER BY contract_efficiency DESC LIMIT 10", None
     
     else:
         return None, "Could not generate SQL query. Try: 'top 5 scorers', 'average salary', 'most efficient players'"
@@ -248,10 +314,6 @@ def execute_natural_language_query(query, df):
             result = pd.DataFrame({'avg_points': [df['pts'].mean()]})
             return result, sql_query
         
-        elif 'efficient' in query.lower() or 'value' in query.lower():
-            result = df.nlargest(10, 'contract_efficiency')[['player_name', 'team_name', 'contract_efficiency', 'salary_usd']]
-            return result, sql_query
-        
         elif 'team' in query.lower() and 'highest' in query.lower():
             result = df.groupby('team_name')['pts'].mean().reset_index()
             result.columns = ['team_name', 'avg_pts']
@@ -264,6 +326,7 @@ def execute_natural_language_query(query, df):
 
 try:
     df = load_data()
+    PLAYER_ID_MAP = dict(zip(df['player_name'], df['player_id']))
     data_loaded = True
 except Exception as e:
     st.error(f"Error loading data: {e}")
@@ -331,14 +394,14 @@ if page == "Project Summary":
         
         st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
         
-        top5 = df.nlargest(5, 'pts')[['player_name', 'team_name', 'pts', 'salary_usd']]
+        top5 = df.nlargest(5, 'pts')[['player_name', 'player_id', 'team_name', 'pts', 'salary_usd']]
         
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         colors = ["gold", "silver", "bronze", "", ""]
         
         for idx, (_, row) in enumerate(top5.iterrows()):
             salary_m = row['salary_usd'] / 1000000
-            img_url = get_player_image_url(row['player_name'])
+            img_url = get_player_image_url(row['player_name'], row['player_id'])
             team_abbrev = row['team_name']
             team_colors = get_team_colors(team_abbrev)
             
@@ -462,137 +525,87 @@ elif page == "Player Search":
                     st.success(f"✅ Found {len(filtered_df)} players")
                     
                     # Display results table
-                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']].copy()
+                    display_df = filtered_df[
+                        ['player_name', 'player_id', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']
+                    ].copy()
+                    display_df['Headshot'] = display_df.apply(
+                        lambda row: get_player_image_url(row['player_name'], row['player_id']), axis=1
+                    )
                     display_df['salary_usd'] = display_df['salary_usd'].apply(lambda x: f"${x:,.0f}")
-                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
-                    
+                    display_df = display_df[
+                        ['Headshot', 'player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']
+                    ]
+                    display_df.columns = ['Headshot', 'Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
+
                     st.dataframe(
                         display_df,
                         use_container_width=True,
                         height=300,
-                        hide_index=True
+                        hide_index=True,
+                        column_config={
+                            'Headshot': st.column_config.ImageColumn("Headshot", width=80),
+                        },
                     )
-                    
-                    # Player selection for detailed view
+                    # Interactive scatter chart to click players instead of dropdown selection
                     st.markdown("---")
-                    st.markdown("### 👤 Select Player for Detailed Analysis")
-                    
-                    selected_player_name = st.selectbox(
-                        "Choose a player:",
-                        filtered_df['player_name'].tolist(),
-                        key='player_select'
+                    st.markdown("### 🖱️ Click a Player on the Chart")
+                    st.caption("Use the scatter plot to select a player directly from the filtered results.")
+
+                    search_fig = px.scatter(
+                        filtered_df,
+                        x='dollars_per_point',
+                        y='pts',
+                        color='team_name',
+                        hover_name='player_name',
+                        hover_data={
+                            'team_name': True,
+                            'pts': ':.1f',
+                            'salary_usd': ':$,.0f',
+                            'dollars_per_point': ':$,.2f'
+                        },
+                        size='pts',
+                        size_max=18,
+                        labels={
+                            'dollars_per_point': 'Dollars per Point ($)',
+                            'pts': 'Points per Game',
+                            'team_name': 'Team'
+                        },
+                        title='Click a player to view quick info'
                     )
-                    
-                    if selected_player_name:
-                        player_data = filtered_df[filtered_df['player_name'] == selected_player_name].iloc[0]
-                        
-                        # Player header with large photo
+
+                    search_fig.update_traces(customdata=filtered_df['player_name'])
+                    search_fig.update_layout(height=500)
+
+                    def on_player_click(trace, points, state):
+                        if points.point_inds:
+                            idx = points.point_inds[0]
+                            st.session_state.plot_click_player = trace.customdata[idx]
+
+                    plot_kwargs = {"use_container_width": True}
+                    if supports_plotly_click():
+                        plot_kwargs["on_click"] = on_player_click
+
+                    st.plotly_chart(search_fig, **plot_kwargs)
+
+                    clicked_player = st.session_state.plot_click_player
+                    if clicked_player and clicked_player in filtered_df['player_name'].values:
+                        player_data = filtered_df[filtered_df['player_name'] == clicked_player].iloc[0]
                         team_colors = get_team_colors(player_data['team_name'])
-                        
+
                         st.markdown(f"""
                             <div class='player-card'>
                                 <div class='player-header'>
-                                    <img src='{get_player_image_url(selected_player_name)}' class='player-photo-large'>
+                                    <img src='{get_player_image_url(clicked_player, player_data['player_id'])}' class='player-photo-large'>
                                     <div>
-                                        <h1 style='margin: 0; color: {team_colors["primary"]};'>{selected_player_name}</h1>
+                                        <h1 style='margin: 0; color: {team_colors["primary"]};'>{clicked_player}</h1>
                                         <h2 style='margin: 10px 0; color: #666;'>{player_data['team_name']}</h2>
                                         <h3 style='color: #4A90E2; margin: 5px 0;'>Salary: ${player_data['salary_usd']:,.0f}</h3>
+                                        <p style='margin: 0; color: #555;'>Points: {player_data['pts']:.1f} • Rebounds: {player_data['reb']:.1f} • Assists: {player_data['assists']:.1f}</p>
                                     </div>
                                 </div>
                             </div>
                         """, unsafe_allow_html=True)
-                        
-                        # Performance Statistics
-                        st.markdown("### 📊 Performance Statistics")
-                        
-                        perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)
-                        
-                        with perf_col1:
-                            st.metric("Points Per Game", f"{player_data['pts']:.1f}", help="Average points scored per game")
-                            st.metric("Games Played", f"{player_data['gp']:.0f}")
-                        
-                        with perf_col2:
-                            st.metric("Rebounds Per Game", f"{player_data['reb']:.1f}")
-                            st.metric("Minutes Played", f"{player_data['min']:.1f}")
-                        
-                        with perf_col3:
-                            st.metric("Assists Per Game", f"{player_data['assists']:.1f}")
-                            st.metric("Field Goal %", f"{player_data['fgp']:.1f}%")
-                        
-                        with perf_col4:
-                            st.metric("3-Point %", f"{player_data['tpp']:.1f}%")
-                            st.metric("Free Throw %", f"{player_data['ftp']:.1f}%")
-                        
-                        # Value Analysis
-                        st.markdown("### 💰 Contract Value Analysis")
-                        
-                        val_col1, val_col2, val_col3 = st.columns(3)
-                        
-                        with val_col1:
-                            st.markdown(f"""
-                                <div class='stat-box'>
-                                    <h4 style='color: #666; margin-top: 0;'>Contract Efficiency</h4>
-                                    <h2 style='color: #4A90E2; margin: 10px 0;'>{player_data['contract_efficiency']:.2f}</h2>
-                                    <p style='color: #888; margin-bottom: 0;'>Stats per $1M salary</p>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        with val_col2:
-                            st.markdown(f"""
-                                <div class='stat-box'>
-                                    <h4 style='color: #666; margin-top: 0;'>Player Value Index</h4>
-                                    <h2 style='color: #FF6B6B; margin: 10px 0;'>{player_data['player_value_index']:.2f}</h2>
-                                    <p style='color: #888; margin-bottom: 0;'>Composite performance</p>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        with val_col3:
-                            dpp = player_data['dollars_per_point']
-                            st.markdown(f"""
-                                <div class='stat-box'>
-                                    <h4 style='color: #666; margin-top: 0;'>Dollars Per Point</h4>
-                                    <h2 style='color: #00C853; margin: 10px 0;'>${dpp:,.0f}</h2>
-                                    <p style='color: #888; margin-bottom: 0;'>Cost efficiency</p>
-                                </div>
-                            """, unsafe_allow_html=True)
-                        
-                        # Performance Radar Chart
-                        st.markdown("### 🎯 Performance Profile")
-                        
-                        categories = ['Points', 'Rebounds', 'Assists', 'FG%', '3P%', 'FT%']
-                        values = [
-                            (player_data['pts'] / df['pts'].max()) * 100,
-                            (player_data['reb'] / df['reb'].max()) * 100,
-                            (player_data['assists'] / df['assists'].max()) * 100,
-                            player_data['fgp'],
-                            player_data['tpp'],
-                            player_data['ftp']
-                        ]
-                        
-                        fig = go.Figure()
-                        
-                        fig.add_trace(go.Scatterpolar(
-                            r=values,
-                            theta=categories,
-                            fill='toself',
-                            name=selected_player_name,
-                            line_color=team_colors['primary'],
-                            fillcolor=f"rgba{tuple(list(int(team_colors['primary'][i:i+2], 16) for i in (1, 3, 5)) + [0.3])}"
-                        ))
-                        
-                        fig.update_layout(
-                            polar=dict(
-                                radialaxis=dict(
-                                    visible=True,
-                                    range=[0, 100]
-                                )
-                            ),
-                            showlegend=True,
-                            height=450
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
+
                 else:
                     st.warning("⚠️ No players found matching your criteria.")
 
@@ -609,20 +622,27 @@ elif page == "Analytics":
         st.markdown("### Filter by Team")
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
         selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
-        
+
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
             plot_df = df[df['team_name'] == selected_team_analytics].copy()
-        
+
+        if (
+            st.session_state.analytics_click_player
+            and st.session_state.analytics_click_player not in plot_df['player_name'].values
+        ):
+            st.session_state.analytics_click_player = None
+
         st.markdown("---")
         st.markdown("### Dollars per Point vs Dollars per Game")
         st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
-        
+
         fig = px.scatter(
             plot_df,
             x='dollars_per_point',
             y='dollars_per_game',
+            custom_data=['player_name'],
             hover_name='player_name',
             hover_data={
                 'team_name': True,
@@ -643,7 +663,7 @@ elif page == "Analytics":
                 'salary_usd': 'Salary'
             }
         )
-        
+
         fig.update_layout(
             height=600,
             xaxis_title="Dollars per Point ($)",
@@ -651,55 +671,38 @@ elif page == "Analytics":
             legend_title="Team",
             font=dict(size=12)
         )
-        st.plotly_chart(fig, use_container_width=True)
 
-        # --------------------------------------------
-        # 📈 Key Insights (SAFE + with player photos)
-        # --------------------------------------------
-        st.markdown("---")
-        st.markdown("### 📈 Key Insights")
+        def on_analytics_click(trace, points, state):
+            if points.point_inds:
+                idx = points.point_inds[0]
+                st.session_state.analytics_click_player = trace.customdata[idx][0]
 
-        if 'plot_df' in locals() and not plot_df.empty and 'dollars_per_point' in plot_df.columns:
-            col1, col2, col3 = st.columns(3)
+        plot_kwargs = {"use_container_width": True}
+        if supports_plotly_click():
+            plot_kwargs["on_click"] = on_analytics_click
 
-            # Most efficient player
-            with col1:
-                most_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmin()]
-                st.metric(
-                    "Most Efficient ($/Point)",
-                    most_efficient['player_name'],
-                    f"${most_efficient['dollars_per_point']:,.2f}"
-                )
-                st.image(
-                    get_player_image_url(most_efficient['player_name']),
-                    caption=most_efficient['player_name'],
-                    width=120
-                )
+        st.plotly_chart(fig, **plot_kwargs)
 
-            # Least efficient player
-            with col2:
-                least_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmax()]
-                st.metric(
-                    "Least Efficient ($/Point)",
-                    least_efficient['player_name'],
-                    f"${least_efficient['dollars_per_point']:,.2f}"
-                )
-                st.image(
-                    get_player_image_url(least_efficient['player_name']),
-                    caption=least_efficient['player_name'],
-                    width=120
-                )
+        clicked_player = st.session_state.analytics_click_player
+        if clicked_player and clicked_player in plot_df['player_name'].values:
+            player_row = plot_df[plot_df['player_name'] == clicked_player].iloc[0]
+            team_colors = get_team_colors(player_row['team_name'])
 
-            # League average
-            with col3:
-                avg_dpp = plot_df['dollars_per_point'].mean()
-                st.metric(
-                    "Average $/Point",
-                    f"${avg_dpp:,.2f}",
-                    "League Average"
-                )
-        else:
-            st.info("Adjust filters to see efficiency insights.")
+            st.markdown("#### Selected Player")
+            st.markdown(f"""
+                <div class='player-card'>
+                    <div class='player-header'>
+                        <img src='{get_player_image_url(clicked_player, player_row['player_id'])}' class='player-photo-large'>
+                        <div>
+                            <h2 style='margin: 0; color: {team_colors["primary"]};'>{clicked_player}</h2>
+                            <h4 style='margin: 8px 0; color: #666;'>{player_row['team_name']}</h4>
+                            <p style='margin: 0; color: #4A90E2;'>Salary per Game: ${player_row['dollars_per_game']:,.2f}</p>
+                            <p style='margin: 0; color: #4A90E2;'>Salary per Point: ${player_row['dollars_per_point']:,.2f}</p>
+                            <p style='margin: 10px 0 0; color: #555;'>PPG: {player_row['pts']:.1f} • RPG: {player_row['reb']:.1f} • APG: {player_row['assists']:.1f}</p>
+                        </div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
 
 # ============================================
@@ -797,9 +800,20 @@ if page == "LLM Chat":
                             st.markdown("#### 🏀 Players in this result")
                             cols = st.columns(len(players))
                             for col, name in zip(cols, players):
+                                player_id = None
+                                if 'player_id' in result_df.columns:
+                                    matching_ids = result_df.loc[
+                                        result_df['player_name'] == name, 'player_id'
+                                    ]
+                                    if not matching_ids.empty:
+                                        player_id = matching_ids.iloc[0]
+
+                                if player_id is None:
+                                    player_id = PLAYER_ID_MAP.get(name)
+
                                 with col:
                                     st.image(
-                                        get_player_image_url(name),
+                                        get_player_image_url(name, player_id),
                                         caption=name,
                                         use_column_width=True
                                     )
