@@ -709,8 +709,8 @@ elif page == "Analytics":
 # LLM CHAT
 # ============================================
 if page == "LLM Chat":
-    st.markdown("# 💬 Natural Language Query Interface")
-    st.markdown("### Ask questions about NBA data in plain English")
+    st.markdown("# 💬 Chat 67")
+    st.markdown("### Ask questions about NBA")
     st.markdown("---")
     
     if not data_loaded:
