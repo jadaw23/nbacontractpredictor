@@ -217,6 +217,17 @@ def format_player_metric(player_data, key, fmt="{:.1f}", default="N/A"):
             pass
     return default
 
+
+def get_numeric_stat(player_data, key, default=0):
+    """Safely fetch a numeric stat for visualizations without raising KeyError."""
+    try:
+        value = player_data.get(key, default)
+        if pd.notnull(value):
+            return value
+    except Exception:
+        pass
+    return default
+
 def generate_sql_query(natural_language_query, df_columns):
     query_lower = natural_language_query.lower()
     
@@ -591,15 +602,15 @@ elif page == "Player Search":
                         
                         # Performance Radar Chart
                         st.markdown("### 🎯 Performance Profile")
-                        
+
                         categories = ['Points', 'Rebounds', 'Assists', 'FG%', '3P%', 'FT%']
                         values = [
                             (player_data['pts'] / df['pts'].max()) * 100,
                             (player_data['reb'] / df['reb'].max()) * 100,
                             (player_data['assists'] / df['assists'].max()) * 100,
-                            player_data['fgp'],
-                            player_data['tpp'],
-                            player_data['ftp']
+                            get_numeric_stat(player_data, 'fgp'),
+                            get_numeric_stat(player_data, 'tpp'),
+                            get_numeric_stat(player_data, 'ftp')
                         ]
                         
                         fig = go.Figure()
