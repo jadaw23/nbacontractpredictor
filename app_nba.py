@@ -651,56 +651,37 @@ elif page == "Analytics":
             legend_title="Team",
             font=dict(size=12)
         )
+        
         st.plotly_chart(fig, use_container_width=True)
 
-        # --------------------------------------------
-        # 📈 Key Insights (SAFE + with player photos)
-        # --------------------------------------------
-        st.markdown("---")
-        st.markdown("### 📈 Key Insights")
+st.markdown("---")
+st.markdown("### 📈 Key Insights")
 
-        if 'plot_df' in locals() and not plot_df.empty and 'dollars_per_point' in plot_df.columns:
-            col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
-            # Most efficient player
-            with col1:
-                most_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmin()]
-                st.metric(
-                    "Most Efficient ($/Point)",
-                    most_efficient['player_name'],
-                    f"${most_efficient['dollars_per_point']:,.2f}"
-                )
-                st.image(
-                    get_player_image_url(most_efficient['player_name']),
-                    caption=most_efficient['player_name'],
-                    width=120
-                )
+with col1:
+    most_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmin()]
+    st.metric(
+        "Most Efficient ($/Point)",
+        most_efficient['player_name'],
+        f"${most_efficient['dollars_per_point']:,.2f}"
+    )
 
-            # Least efficient player
-            with col2:
-                least_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmax()]
-                st.metric(
-                    "Least Efficient ($/Point)",
-                    least_efficient['player_name'],
-                    f"${least_efficient['dollars_per_point']:,.2f}"
-                )
-                st.image(
-                    get_player_image_url(least_efficient['player_name']),
-                    caption=least_efficient['player_name'],
-                    width=120
-                )
+with col2:
+    least_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmax()]
+    st.metric(
+        "Least Efficient ($/Point)",
+        least_efficient['player_name'],
+        f"${least_efficient['dollars_per_point']:,.2f}"
+    )
 
-            # League average
-            with col3:
-                avg_dpp = plot_df['dollars_per_point'].mean()
-                st.metric(
-                    "Average $/Point",
-                    f"${avg_dpp:,.2f}",
-                    "League Average"
-                )
-        else:
-            st.info("Adjust filters to see efficiency insights.")
-
+with col3:
+    avg_dpp = plot_df['dollars_per_point'].mean()
+    st.metric(
+        "Average $/Point",
+        f"${avg_dpp:,.2f}",
+        "League Average"
+    )
 
 # ============================================
 # LLM CHAT
@@ -713,12 +694,7 @@ if page == "LLM Chat":
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        st.info(
-            "🤖 **LLM Integration Details:**\n"
-            "- Model: Claude (Anthropic API)\n"
-            "- Prompt Engineering: Context-aware SQL generation\n"
-            "- Security: Input validation, injection prevention, query sanitization"
-        )
+        st.info("🤖 **LLM Integration Details:**\n- Model: Claude (Anthropic API)\n- Prompt Engineering: Context-aware SQL generation\n- Security: Input validation, injection prevention, query sanitization")
         
         with st.expander("📖 Example Queries"):
             st.markdown("""
@@ -781,28 +757,7 @@ if page == "LLM Chat":
                 """, unsafe_allow_html=True)
                 
                 if 'data' in msg and msg['data'] is not None:
-                    result_df = msg['data']
-                    st.dataframe(result_df, use_container_width=True)
-
-                    # 🏀 Show player headshots if the result has player_name
-                    if 'player_name' in result_df.columns:
-                        players = (
-                            result_df['player_name']
-                            .dropna()
-                            .astype(str)
-                            .unique()[:3]  # show first 3 players
-                        )
-
-                        if len(players) > 0:
-                            st.markdown("#### 🏀 Players in this result")
-                            cols = st.columns(len(players))
-                            for col, name in zip(cols, players):
-                                with col:
-                                    st.image(
-                                        get_player_image_url(name),
-                                        caption=name,
-                                        use_column_width=True
-                                    )
+                    st.dataframe(msg['data'], use_container_width=True)
 
 # Footer
 st.markdown("---")
