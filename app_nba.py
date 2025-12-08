@@ -16,6 +16,56 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# NBA Team Colors Dictionary
+NBA_COLORS = {
+    'ATL': {'primary': '#E03A3E', 'secondary': '#C1D32F'},
+    'BOS': {'primary': '#007A33', 'secondary': '#BA9653'},
+    'BRK': {'primary': '#000000', 'secondary': '#FFFFFF'},
+    'CHA': {'primary': '#1D1160', 'secondary': '#00788C'},
+    'CHI': {'primary': '#CE1141', 'secondary': '#000000'},
+    'CLE': {'primary': '#860038', 'secondary': '#FDBB30'},
+    'DAL': {'primary': '#00538C', 'secondary': '#002B5E'},
+    'DEN': {'primary': '#0E2240', 'secondary': '#FEC524'},
+    'DET': {'primary': '#C8102E', 'secondary': '#1D42BA'},
+    'GSW': {'primary': '#1D428A', 'secondary': '#FFC72C'},
+    'HOU': {'primary': '#CE1141', 'secondary': '#000000'},
+    'IND': {'primary': '#002D62', 'secondary': '#FDBB30'},
+    'LAC': {'primary': '#C8102E', 'secondary': '#1D428A'},
+    'LAL': {'primary': '#552583', 'secondary': '#FDB927'},
+    'MEM': {'primary': '#5D76A9', 'secondary': '#12173F'},
+    'MIA': {'primary': '#98002E', 'secondary': '#F9A01B'},
+    'MIL': {'primary': '#00471B', 'secondary': '#EEE1C6'},
+    'MIN': {'primary': '#0C2340', 'secondary': '#236192'},
+    'NOP': {'primary': '#0C2340', 'secondary': '#C8102E'},
+    'NYK': {'primary': '#006BB6', 'secondary': '#F58426'},
+    'OKC': {'primary': '#007AC1', 'secondary': '#EF3B24'},
+    'ORL': {'primary': '#0077C0', 'secondary': '#C4CED4'},
+    'PHI': {'primary': '#006BB6', 'secondary': '#ED174C'},
+    'PHX': {'primary': '#1D1160', 'secondary': '#E56020'},
+    'POR': {'primary': '#E03A3E', 'secondary': '#000000'},
+    'SAC': {'primary': '#5A2D81', 'secondary': '#63727A'},
+    'SAS': {'primary': '#C4CED4', 'secondary': '#000000'},
+    'TOR': {'primary': '#CE1141', 'secondary': '#000000'},
+    'UTA': {'primary': '#002B5C', 'secondary': '#00471B'},
+    'WAS': {'primary': '#002B5C', 'secondary': '#E31837'}
+}
+
+# Player headshot URL generator
+def get_player_image_url(player_name):
+    """Generate NBA headshot URL from player name"""
+    # Format: first initial + last name, lowercase, no spaces
+    parts = player_name.strip().split()
+    if len(parts) >= 2:
+        first_initial = parts[0][0].lower()
+        last_name = ''.join(parts[1:]).lower()
+        player_id = f"{last_name}{first_initial}"
+        return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png"
+    return None
+
+def get_team_colors(team_abbrev):
+    """Get team colors from abbreviation"""
+    return NBA_COLORS.get(team_abbrev, {'primary': '#f57c00', 'secondary': '#ff9800'})
+
 # Custom CSS for styling
 st.markdown("""
     <style>
@@ -40,11 +90,22 @@ st.markdown("""
         padding: 15px;
         border-radius: 8px;
         margin: 10px 0;
-        border-left: 4px solid #f57c00;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-    .gold { border-left-color: #FFD700 !important; }
-    .silver { border-left-color: #C0C0C0 !important; }
-    .bronze { border-left-color: #CD7F32 !important; }
+    .player-img {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-right: 15px;
+        border: 3px solid white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    .gold { border-left: 4px solid #FFD700 !important; }
+    .silver { border-left: 4px solid #C0C0C0 !important; }
+    .bronze { border-left: 4px solid #CD7F32 !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -127,7 +188,7 @@ if page == "HW Summary":
         st.markdown("<br>", unsafe_allow_html=True)
         
         # ============================================
-        # TOP 5 PLAYERS BY POINTS
+        # TOP 5 PLAYERS BY POINTS WITH IMAGES
         # ============================================
         st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
         
@@ -138,11 +199,21 @@ if page == "HW Summary":
         
         for idx, (_, row) in enumerate(top5.iterrows()):
             salary_m = row['salary_usd'] / 1000000
+            img_url = get_player_image_url(row['player_name'])
+            
+            # Fallback image if player image not found
+            img_tag = f'<img src="{img_url}" class="player-img" onerror="this.src=\'https://via.placeholder.com/60x60.png?text={row["player_name"][0]}\'">' if img_url else ""
+            
             st.markdown(f"""
                 <div class='top-player {colors[idx]}'>
-                    <span style='font-size: 1.5em;'>{medals[idx]}</span>
-                    <strong style='font-size: 1.2em; margin-left: 10px;'>{row['player_name']}</strong>
-                    <span style='float: right; font-size: 1.1em;'>⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M</span>
+                    <span style='font-size: 1.5em; margin-right: 10px;'>{medals[idx]}</span>
+                    {img_tag}
+                    <div style='flex: 1;'>
+                        <strong style='font-size: 1.2em;'>{row['player_name']}</strong>
+                        <div style='font-size: 0.9em; color: #7f8c8d;'>
+                            ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M
+                        </div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -160,8 +231,8 @@ if page == "HW Summary":
         and salary data. The application loads data from an Excel file and provides interactive 
         filtering and visualization capabilities. I used Plotly Express for creating the 
         scatter plot visualization which allows for interactive exploration of the relationship 
-        between salary per point and salary per game. The dashboard demonstrates CRUD-like 
-        read operations and analytics visualizations as required.
+        between salary per point and salary per game. Player images are dynamically loaded using 
+        NBA's CDN headshot URLs.
         """)
 
     with col2:
@@ -170,13 +241,13 @@ if page == "HW Summary":
         st.write("""
         I customized this application in several ways:
         
-        1. **Layout:** Used Streamlit's column layout for organized displays.
+        1. **Player Images:** Dynamic player headshots with fallback placeholders.
         
-        2. **Visualizations:** Interactive Plotly scatter plot with hover information.
+        2. **Team Colors:** NBA official team color schemes for visualizations.
         
-        3. **Data Display:** Formatted DataFrames with custom styling.
+        3. **Layout:** Enhanced column layout with images and styled cards.
         
-        4. **Statistics:** Dynamic stats cards showing key metrics.
+        4. **Visualizations:** Interactive Plotly scatter plot with team colors.
         """)
 
     st.markdown("### 🛠️ Technologies Used")
@@ -198,7 +269,6 @@ elif page == "Player Search":
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        # Get min and max salary for slider
         min_salary = int(df['salary_usd'].min())
         max_salary = int(df['salary_usd'].max())
 
@@ -214,11 +284,9 @@ elif page == "Player Search":
                 placeholder="e.g., LeBron"
             )
 
-            # Team filter
             teams = ['All Teams'] + sorted(df['team_name'].unique().tolist())
             selected_team = st.selectbox("Select Team:", teams)
 
-            # Salary range slider (in millions for better UX)
             salary_range = st.slider(
                 "Salary Range (USD):",
                 min_value=min_salary,
@@ -228,7 +296,7 @@ elif page == "Player Search":
             )
 
             search_button = st.button(
-                "🔍 Search Players",
+                "🔎 Search Players",
                 type="primary",
                 use_container_width=True
             )
@@ -237,18 +305,14 @@ elif page == "Player Search":
             st.markdown("### Search Results")
 
             if search_button:
-                # Filter data
                 filtered_df = df.copy()
                 
-                # Filter by name
                 if name_pattern:
                     filtered_df = filtered_df[filtered_df['player_name'].str.contains(name_pattern, case=False, na=False)]
                 
-                # Filter by team
                 if selected_team != 'All Teams':
                     filtered_df = filtered_df[filtered_df['team_name'] == selected_team]
                 
-                # Filter by salary range
                 filtered_df = filtered_df[
                     (filtered_df['salary_usd'] >= salary_range[0]) & 
                     (filtered_df['salary_usd'] <= salary_range[1])
@@ -258,7 +322,6 @@ elif page == "Player Search":
                     st.success(f"Found {len(filtered_df)} players")
                     st.balloons()
                     
-                    # Display results
                     display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']].copy()
                     display_df['salary_usd'] = display_df['salary_usd'].apply(lambda x: f"${x:,.0f}")
                     display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
@@ -282,12 +345,10 @@ elif page == "Analytics":
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        # Team filter for scatter plot
         st.markdown("### Filter by Team")
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
         selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
         
-        # Filter data based on team selection
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
@@ -297,7 +358,6 @@ elif page == "Analytics":
         st.markdown("### Dollars per Point vs Dollars per Game")
         st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
         
-        # Create scatter plot
         fig = px.scatter(
             plot_df,
             x='dollars_per_point',
@@ -334,8 +394,6 @@ elif page == "Analytics":
         st.plotly_chart(fig, use_container_width=True)
         
         st.markdown("---")
-        
-        # Additional stats
         st.markdown("### 📈 Key Insights")
         
         col1, col2, col3 = st.columns(3)
