@@ -162,17 +162,17 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["HW Summary", "Player Search", "Analytics"],
+    ["Project Summary", "Player Search", "Analytics"],
     help="Select a page to navigate"
 )
 st.sidebar.markdown("---")
 st.sidebar.info("NBA Player Statistics Dashboard")
 
 # ============================================
-# TAB 1: HW SUMMARY
+# TAB 1: PROJECT SUMMARY
 # ============================================
-if page == "HW Summary":
-    st.markdown("# 📝 Homework Summary")
+if page == "Project Summary":
+    st.markdown("# 📝 Project Summary")
     st.markdown("---")
 
     # ============================================
@@ -261,9 +261,9 @@ if page == "HW Summary":
 
         st.write("""
         This NBA dashboard was built using Streamlit and Pandas to analyze player statistics 
-        and salary data. The application loads data from an Excel file and provides interactive 
-        filtering and visualization capabilities. I used Plotly Express for creating the 
-        scatter plot visualization which allows for interactive exploration of the relationship 
+        and salary data. We designed the application to load data from an Excel file and provide 
+        interactive filtering and visualization capabilities. We used Plotly Express for creating 
+        the scatter plot visualization which allows for interactive exploration of the relationship 
         between salary per point and salary per game. Player images are dynamically loaded using 
         NBA's CDN headshot URLs with fallback avatars.
         """)
@@ -272,15 +272,19 @@ if page == "HW Summary":
         st.subheader("🎨 Customizations Made")
 
         st.write("""
-        I customized this application in several ways:
+        We customized this application in several ways:
         
-        1. **Player Images:** Dynamic player headshots with fallback placeholders.
+        1. **Layout:** Used Streamlit's column layout for organized displays.
         
-        2. **Team Colors:** NBA official team color schemes (red/blue gradients).
+        2. **Visualizations:** Interactive Plotly scatter plot with hover information.
         
-        3. **Layout:** Enhanced column layout with images and styled cards.
+        3. **Data Display:** Formatted DataFrames with custom styling.
         
-        4. **Visualizations:** Interactive Plotly scatter plot with team colors.
+        4. **Statistics:** Dynamic stats cards showing key metrics.
+        
+        5. **Player Images:** Dynamic player headshots with fallback placeholders.
+        
+        6. **Team Colors:** NBA official team color schemes (red/blue gradients).
         """)
 
     st.markdown("### 🛠️ Technologies Used")
