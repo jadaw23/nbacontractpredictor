@@ -3,10 +3,10 @@
 # ITOM6265 - Database Project
 # ============================================
 
+import inspect
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import json
 import re
 from datetime import datetime
@@ -84,10 +84,21 @@ def get_player_image_url(player_name, player_id=None):
 def get_team_colors(team_abbrev):
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
+
+def supports_plotly_click():
+    try:
+        return 'on_click' in inspect.signature(st.plotly_chart).parameters
+    except Exception:
+        return False
+
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'selected_player' not in st.session_state:
     st.session_state.selected_player = None
+if 'plot_click_player' not in st.session_state:
+    st.session_state.plot_click_player = None
+if 'analytics_click_player' not in st.session_state:
+    st.session_state.analytics_click_player = None
 
 # Custom CSS
 st.markdown("""
@@ -516,31 +527,61 @@ elif page == "Player Search":
                             'Headshot': st.column_config.ImageColumn("Headshot", width=80),
                         },
                     )
-                    
-                    # Player selection for detailed view
+                    # Interactive scatter chart to click players instead of dropdown selection
                     st.markdown("---")
-                    st.markdown("### 👤 Select Player for Detailed Analysis")
-                    
-                    selected_player_name = st.selectbox(
-                        "Choose a player:",
-                        filtered_df['player_name'].tolist(),
-                        key='player_select'
+                    st.markdown("### 🖱️ Click a Player on the Chart")
+                    st.caption("Use the scatter plot to select a player directly from the filtered results.")
+
+                    search_fig = px.scatter(
+                        filtered_df,
+                        x='dollars_per_point',
+                        y='pts',
+                        color='team_name',
+                        hover_name='player_name',
+                        hover_data={
+                            'team_name': True,
+                            'pts': ':.1f',
+                            'salary_usd': ':$,.0f',
+                            'dollars_per_point': ':$,.2f'
+                        },
+                        size='pts',
+                        size_max=18,
+                        labels={
+                            'dollars_per_point': 'Dollars per Point ($)',
+                            'pts': 'Points per Game',
+                            'team_name': 'Team'
+                        },
+                        title='Click a player to view quick info'
                     )
-                    
-                    if selected_player_name:
-                        player_data = filtered_df[filtered_df['player_name'] == selected_player_name].iloc[0]
-                        
-                        # Player header with large photo
+
+                    search_fig.update_traces(customdata=filtered_df['player_name'])
+                    search_fig.update_layout(height=500)
+
+                    def on_player_click(trace, points, state):
+                        if points.point_inds:
+                            idx = points.point_inds[0]
+                            st.session_state.plot_click_player = trace.customdata[idx]
+
+                    plot_kwargs = {"use_container_width": True}
+                    if supports_plotly_click():
+                        plot_kwargs["on_click"] = on_player_click
+
+                    st.plotly_chart(search_fig, **plot_kwargs)
+
+                    clicked_player = st.session_state.plot_click_player
+                    if clicked_player and clicked_player in filtered_df['player_name'].values:
+                        player_data = filtered_df[filtered_df['player_name'] == clicked_player].iloc[0]
                         team_colors = get_team_colors(player_data['team_name'])
-                        
+
                         st.markdown(f"""
                             <div class='player-card'>
                                 <div class='player-header'>
                                     <img src='{get_player_image_url(selected_player_name, player_data['player_id'])}' class='player-photo-large'>
                                     <div>
-                                        <h1 style='margin: 0; color: {team_colors["primary"]};'>{selected_player_name}</h1>
+                                        <h1 style='margin: 0; color: {team_colors["primary"]};'>{clicked_player}</h1>
                                         <h2 style='margin: 10px 0; color: #666;'>{player_data['team_name']}</h2>
                                         <h3 style='color: #4A90E2; margin: 5px 0;'>Salary: ${player_data['salary_usd']:,.0f}</h3>
+                                        <p style='margin: 0; color: #555;'>Points: {player_data['pts']:.1f} • Rebounds: {player_data['reb']:.1f} • Assists: {player_data['assists']:.1f}</p>
                                     </div>
                                 </div>
                             </div>
@@ -653,16 +694,22 @@ elif page == "Analytics":
         st.markdown("### Filter by Team")
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
         selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
-        
+
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
             plot_df = df[df['team_name'] == selected_team_analytics].copy()
-        
+
+        if (
+            st.session_state.analytics_click_player
+            and st.session_state.analytics_click_player not in plot_df['player_name'].values
+        ):
+            st.session_state.analytics_click_player = None
+
         st.markdown("---")
         st.markdown("### Dollars per Point vs Dollars per Game")
         st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
-        
+
         fig = px.scatter(
             plot_df,
             x='dollars_per_point',
@@ -687,7 +734,8 @@ elif page == "Analytics":
                 'salary_usd': 'Salary'
             }
         )
-        
+
+        fig.update_traces(customdata=plot_df['player_name'])
         fig.update_layout(
             height=600,
             xaxis_title="Dollars per Point ($)",
@@ -695,7 +743,6 @@ elif page == "Analytics":
             legend_title="Team",
             font=dict(size=12)
         )
-        st.plotly_chart(fig, use_container_width=True)
 
         # --------------------------------------------
         # 📈 Key Insights (SAFE + with player photos)
