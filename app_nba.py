@@ -65,9 +65,20 @@ PLAYER_IMAGES = {
     'Embiid Joel': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203954.png',
 }
 
-def get_player_image_url(player_name):
+PLAYER_ID_MAP = {}
+
+
+def get_player_image_url(player_name, player_id=None):
     if player_name in PLAYER_IMAGES:
         return PLAYER_IMAGES[player_name]
+
+    resolved_id = player_id
+    if resolved_id is None and PLAYER_ID_MAP:
+        resolved_id = PLAYER_ID_MAP.get(player_name)
+
+    if resolved_id is not None:
+        return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{int(resolved_id)}.png"
+
     return f"https://ui-avatars.com/api/?name={player_name.replace(' ', '+')}&size=400&background=4A90E2&color=fff&bold=true&font-size=0.4"
 
 def get_team_colors(team_abbrev):
@@ -264,6 +275,7 @@ def execute_natural_language_query(query, df):
 
 try:
     df = load_data()
+    PLAYER_ID_MAP = dict(zip(df['player_name'], df['player_id']))
     data_loaded = True
 except Exception as e:
     st.error(f"Error loading data: {e}")
@@ -331,14 +343,14 @@ if page == "Project Summary":
         
         st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
         
-        top5 = df.nlargest(5, 'pts')[['player_name', 'team_name', 'pts', 'salary_usd']]
+        top5 = df.nlargest(5, 'pts')[['player_name', 'player_id', 'team_name', 'pts', 'salary_usd']]
         
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         colors = ["gold", "silver", "bronze", "", ""]
         
         for idx, (_, row) in enumerate(top5.iterrows()):
             salary_m = row['salary_usd'] / 1000000
-            img_url = get_player_image_url(row['player_name'])
+            img_url = get_player_image_url(row['player_name'], row['player_id'])
             team_abbrev = row['team_name']
             team_colors = get_team_colors(team_abbrev)
             
@@ -462,15 +474,26 @@ elif page == "Player Search":
                     st.success(f"✅ Found {len(filtered_df)} players")
                     
                     # Display results table
-                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']].copy()
+                    display_df = filtered_df[
+                        ['player_name', 'player_id', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']
+                    ].copy()
+                    display_df['Headshot'] = display_df.apply(
+                        lambda row: get_player_image_url(row['player_name'], row['player_id']), axis=1
+                    )
                     display_df['salary_usd'] = display_df['salary_usd'].apply(lambda x: f"${x:,.0f}")
-                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
-                    
+                    display_df = display_df[
+                        ['Headshot', 'player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']
+                    ]
+                    display_df.columns = ['Headshot', 'Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
+
                     st.dataframe(
                         display_df,
                         use_container_width=True,
                         height=300,
-                        hide_index=True
+                        hide_index=True,
+                        column_config={
+                            'Headshot': st.column_config.ImageColumn("Headshot", width=80),
+                        },
                     )
                     
                     # Player selection for detailed view
@@ -492,7 +515,7 @@ elif page == "Player Search":
                         st.markdown(f"""
                             <div class='player-card'>
                                 <div class='player-header'>
-                                    <img src='{get_player_image_url(selected_player_name)}' class='player-photo-large'>
+                                    <img src='{get_player_image_url(selected_player_name, player_data['player_id'])}' class='player-photo-large'>
                                     <div>
                                         <h1 style='margin: 0; color: {team_colors["primary"]};'>{selected_player_name}</h1>
                                         <h2 style='margin: 10px 0; color: #666;'>{player_data['team_name']}</h2>
@@ -671,7 +694,7 @@ elif page == "Analytics":
                     f"${most_efficient['dollars_per_point']:,.2f}"
                 )
                 st.image(
-                    get_player_image_url(most_efficient['player_name']),
+                    get_player_image_url(most_efficient['player_name'], most_efficient['player_id']),
                     caption=most_efficient['player_name'],
                     width=120
                 )
@@ -685,7 +708,7 @@ elif page == "Analytics":
                     f"${least_efficient['dollars_per_point']:,.2f}"
                 )
                 st.image(
-                    get_player_image_url(least_efficient['player_name']),
+                    get_player_image_url(least_efficient['player_name'], least_efficient['player_id']),
                     caption=least_efficient['player_name'],
                     width=120
                 )
@@ -797,9 +820,20 @@ if page == "LLM Chat":
                             st.markdown("#### 🏀 Players in this result")
                             cols = st.columns(len(players))
                             for col, name in zip(cols, players):
+                                player_id = None
+                                if 'player_id' in result_df.columns:
+                                    matching_ids = result_df.loc[
+                                        result_df['player_name'] == name, 'player_id'
+                                    ]
+                                    if not matching_ids.empty:
+                                        player_id = matching_ids.iloc[0]
+
+                                if player_id is None:
+                                    player_id = PLAYER_ID_MAP.get(name)
+
                                 with col:
                                     st.image(
-                                        get_player_image_url(name),
+                                        get_player_image_url(name, player_id),
                                         caption=name,
                                         use_column_width=True
                                     )
