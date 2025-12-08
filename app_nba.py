@@ -1,9 +1,8 @@
 # ============================================
-# NBA Dashboard - Streamlit Application with LLM Integration
+# NBA Dashboard - Comprehensive Player Impact Analysis
 # ITOM6265 - Database Project
 # ============================================
 
-# Block 1: Import required libraries
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -11,10 +10,11 @@ import plotly.graph_objects as go
 import json
 import re
 from datetime import datetime
+import numpy as np
 
-# Block 2: Page configuration
+# Page configuration
 st.set_page_config(
-    page_title="ITOM6265-NBA Dashboard",
+    page_title="NBA Player Impact Analysis",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -54,7 +54,6 @@ NBA_COLORS = {
     'WAS': {'primary': '#002B5C', 'secondary': '#E31837'}
 }
 
-# Player headshot mapping
 PLAYER_IMAGES = {
     'Gilgeous-Alexander Shai': 'https://cdn.nba.com/headshots/nba/latest/1040x760/1628983.png',
     'Antetokounmpo Giannis': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203507.png',
@@ -69,24 +68,20 @@ PLAYER_IMAGES = {
 }
 
 def get_player_image_url(player_name):
-    """Get player headshot URL"""
     if player_name in PLAYER_IMAGES:
         return PLAYER_IMAGES[player_name]
-    return f"https://ui-avatars.com/api/?name={player_name.replace(' ', '+')}&size=200&background=f57c00&color=fff&bold=true"
+    return f"https://ui-avatars.com/api/?name={player_name.replace(' ', '+')}&size=400&background=4A90E2&color=fff&bold=true&font-size=0.4"
 
 def get_team_colors(team_abbrev):
-    """Get team colors from abbreviation"""
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
-# Initialize session state for data storage (simulating database)
-if 'player_notes' not in st.session_state:
-    st.session_state.player_notes = {}
-if 'user_role' not in st.session_state:
-    st.session_state.user_role = 'viewer'  # viewer, editor, admin
+# Initialize session state
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+if 'selected_player' not in st.session_state:
+    st.session_state.selected_player = None
 
-# Custom CSS for styling with NBA theme
+# Custom CSS
 st.markdown("""
     <style>
     .stApp {
@@ -145,6 +140,37 @@ st.markdown("""
     .silver { border-left: 5px solid #C0C0C0 !important; }
     .bronze { border-left: 5px solid #CD7F32 !important; }
     
+    .player-card {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        margin: 20px 0;
+    }
+    
+    .player-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    
+    .player-photo {
+        width: 150px;
+        height: 150px;
+        border-radius: 15px;
+        object-fit: cover;
+        border: 4px solid #4A90E2;
+        margin-right: 30px;
+    }
+    
+    .stat-box {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 0;
+        border-left: 4px solid #4A90E2;
+    }
+    
     .chat-message {
         padding: 10px;
         border-radius: 8px;
@@ -165,22 +191,19 @@ st.markdown("""
 @st.cache_data
 def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
+    # Add calculated metrics for comprehensive analysis
+    df['contract_efficiency'] = (df['pts'] + df['reb'] + df['assists']) / (df['salary_usd'] / 1000000)
+    df['player_value_index'] = df['pts'] * 0.4 + df['reb'] * 0.3 + df['assists'] * 0.3
     return df
 
-# LLM Query Generator (Simulated - would use actual API in production)
+# LLM Query Generator
 def generate_sql_query(natural_language_query, df_columns):
-    """
-    Simulates LLM-based SQL query generation with prompt engineering
-    In production, this would call Claude API or similar
-    """
     query_lower = natural_language_query.lower()
     
-    # Security: Input validation and sanitization
     dangerous_keywords = ['drop', 'delete', 'truncate', 'alter', 'create', 'insert']
     if any(keyword in query_lower for keyword in dangerous_keywords):
         return None, "Security Error: Potentially dangerous SQL keywords detected"
     
-    # Pattern matching for common queries
     if 'top' in query_lower and 'scorer' in query_lower:
         n = 5
         match = re.search(r'top (\d+)', query_lower)
@@ -197,17 +220,18 @@ def generate_sql_query(natural_language_query, df_columns):
     elif 'team' in query_lower and 'highest' in query_lower:
         return "SELECT team_name, AVG(pts) as avg_pts FROM players GROUP BY team_name ORDER BY avg_pts DESC LIMIT 1", None
     
+    elif 'efficient' in query_lower or 'value' in query_lower:
+        return "SELECT player_name, contract_efficiency FROM players ORDER BY contract_efficiency DESC LIMIT 10", None
+    
     else:
-        return None, "Could not generate SQL query. Try queries like: 'top 5 scorers', 'average salary', 'team with highest average points'"
+        return None, "Could not generate SQL query. Try: 'top 5 scorers', 'average salary', 'most efficient players'"
 
 def execute_natural_language_query(query, df):
-    """Execute natural language query with LLM integration"""
     sql_query, error = generate_sql_query(query, df.columns.tolist())
     
     if error:
         return None, error
     
-    # Simulate SQL execution using pandas operations
     try:
         if 'top' in query.lower() and 'scorer' in query.lower():
             n = 5
@@ -225,6 +249,10 @@ def execute_natural_language_query(query, df):
             result = pd.DataFrame({'avg_points': [df['pts'].mean()]})
             return result, sql_query
         
+        elif 'efficient' in query.lower() or 'value' in query.lower():
+            result = df.nlargest(10, 'contract_efficiency')[['player_name', 'team_name', 'contract_efficiency', 'salary_usd']]
+            return result, sql_query
+        
         elif 'team' in query.lower() and 'highest' in query.lower():
             result = df.groupby('team_name')['pts'].mean().reset_index()
             result.columns = ['team_name', 'avg_pts']
@@ -235,87 +263,36 @@ def execute_natural_language_query(query, df):
     except Exception as e:
         return None, f"Execution error: {str(e)}"
 
-# CRUD Operations
-def create_player_note(player_name, note, user_role):
-    """Create operation - Add note for a player"""
-    if user_role not in ['editor', 'admin']:
-        return False, "Permission denied: Only editors and admins can create notes"
-    
-    if player_name not in st.session_state.player_notes:
-        st.session_state.player_notes[player_name] = []
-    
-    st.session_state.player_notes[player_name].append({
-        'note': note,
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'user_role': user_role
-    })
-    return True, "Note created successfully"
-
-def read_player_notes(player_name):
-    """Read operation - Get all notes for a player"""
-    return st.session_state.player_notes.get(player_name, [])
-
-def update_player_note(player_name, note_index, new_note, user_role):
-    """Update operation - Modify existing note"""
-    if user_role not in ['editor', 'admin']:
-        return False, "Permission denied: Only editors and admins can update notes"
-    
-    if player_name in st.session_state.player_notes and note_index < len(st.session_state.player_notes[player_name]):
-        st.session_state.player_notes[player_name][note_index]['note'] = new_note
-        st.session_state.player_notes[player_name][note_index]['updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return True, "Note updated successfully"
-    return False, "Note not found"
-
-def delete_player_note(player_name, note_index, user_role):
-    """Delete operation - Remove a note"""
-    if user_role != 'admin':
-        return False, "Permission denied: Only admins can delete notes"
-    
-    if player_name in st.session_state.player_notes and note_index < len(st.session_state.player_notes[player_name]):
-        st.session_state.player_notes[player_name].pop(note_index)
-        return True, "Note deleted successfully"
-    return False, "Note not found"
-
 try:
     df = load_data()
     data_loaded = True
 except Exception as e:
     st.error(f"Error loading data: {e}")
-    st.info("Make sure 'Full_NBA_Dataset.xlsx' is in the same folder as this script.")
     data_loaded = False
     df = None
 
-# Sidebar navigation
-st.sidebar.title("🏀 NBA Dashboard")
-st.sidebar.markdown("---")
-
-# User role selector
-st.sidebar.markdown("### User Role")
-st.session_state.user_role = st.sidebar.selectbox(
-    "Select your role:",
-    ["viewer", "editor", "admin"],
-    help="Different roles have different permissions"
-)
-
+# Sidebar
+st.sidebar.title("🏀 NBA Impact Analysis")
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["Project Summary", "Player Search", "Analytics", "LLM Chat", "CRUD Manager"],
+    ["Project Overview", "Player Search & Analysis", "Team Analytics", "LLM Query Assistant"],
     help="Select a page to navigate"
 )
 st.sidebar.markdown("---")
-st.sidebar.info(f"NBA Player Statistics Dashboard\n\nCurrent Role: **{st.session_state.user_role}**")
+st.sidebar.info("**Comprehensive Player Impact Analysis Platform**\n\nMeasuring value and performance across multiple indicators")
 
 # ============================================
-# TAB 1: PROJECT SUMMARY
+# PROJECT OVERVIEW
 # ============================================
-if page == "Project Summary":
-    st.markdown("# 📝 Project Summary")
+if page == "Project Overview":
+    st.markdown("# 📊 NBA Player Impact Analysis Platform")
+    st.markdown("### Comprehensive Player Value & Contract Efficiency Analysis")
     st.markdown("---")
 
     if data_loaded:
-        st.markdown("### 🏀 NBA Statistics Overview")
+        st.markdown("### 🏀 Database Overview")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -331,7 +308,7 @@ if page == "Project Summary":
             st.markdown(f"""
                 <div class='metric-card'>
                     <div class='metric-value'>🏆 {df['team_name'].nunique()}</div>
-                    <div class='metric-label'>Teams</div>
+                    <div class='metric-label'>Teams Tracked</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -345,19 +322,20 @@ if page == "Project Summary":
             """, unsafe_allow_html=True)
         
         with col4:
-            avg_pts = df['pts'].mean()
+            avg_efficiency = df['contract_efficiency'].mean()
             st.markdown(f"""
                 <div class='metric-card'>
-                    <div class='metric-value'>⭐ {avg_pts:.1f}</div>
-                    <div class='metric-label'>Avg Points</div>
+                    <div class='metric-value'>📈 {avg_efficiency:.2f}</div>
+                    <div class='metric-label'>Avg Efficiency</div>
                 </div>
             """, unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
+        # Top performers
+        st.markdown("### 🏆 Top 5 Most Efficient Players (Contract Value)")
         
-        top5 = df.nlargest(5, 'pts')[['player_name', 'team_name', 'pts', 'salary_usd']]
+        top5 = df.nlargest(5, 'contract_efficiency')[['player_name', 'team_name', 'pts', 'salary_usd', 'contract_efficiency']]
         
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         colors = ["gold", "silver", "bronze", "", ""]
@@ -375,7 +353,7 @@ if page == "Project Summary":
                     <div style='flex: 1;'>
                         <strong style='font-size: 1.2em;'>{row['player_name']}</strong>
                         <div style='font-size: 0.9em; opacity: 0.9;'>
-                            ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M
+                            ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M | 📊 Efficiency: {row['contract_efficiency']:.2f}
                         </div>
                     </div>
                 </div>
@@ -388,49 +366,51 @@ if page == "Project Summary":
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("🎯 Approach and Implementation")
+        st.subheader("🎯 Project Objective")
 
         st.write("""
-        This NBA dashboard was built using Streamlit and Pandas to analyze player statistics 
-        and salary data. We designed the application to load data from an Excel file and provide 
-        interactive filtering and visualization capabilities. 
+        **Mission:** Build an analytical platform that measures player value in relation to cost, 
+        benchmarking performance across multiple statistical indicators to inform strategic contract decisions.
         
-        **LLM Integration:**
-        - Natural language query processing for database interactions
-        - Prompt engineering for SQL query generation
-        - Security measures including input validation and injection prevention
-        - Error handling with user-friendly feedback
+        **Key Features:**
+        - Comprehensive player impact analysis
+        - Contract efficiency ratings
+        - Performance prediction metrics
+        - Interactive player comparison tools
+        - Natural language query interface powered by LLM
+        """)
         
-        **CRUD Operations:**
-        - Full Create, Read, Update, Delete functionality for player notes
-        - Role-based access control (viewer, editor, admin)
-        - Data validation and permission checking
+        st.markdown("### 📋 Database Scope")
+        st.write("""
+        **Player Information:** ID, name, position, stats
+        
+        **Contract Data:** Salary, contract value, efficiency
+        
+        **Performance Statistics:** Games, minutes, points, rebounds, assists, shooting percentages
+        
+        **Value Analysis:** Contract efficiency, player value index, predicted metrics
         """)
 
     with col2:
-        st.subheader("🎨 Customizations Made")
+        st.subheader("🎨 Technical Implementation")
 
         st.write("""
-        We customized this application in several ways:
+        **Data Architecture:**
         
-        1. **Layout:** Used Streamlit's column layout for organized displays.
+        1. **Excel Database:** Centralized player and team data
         
-        2. **Visualizations:** Interactive Plotly scatter plot with hover information.
+        2. **Real-time Analytics:** Dynamic calculation of efficiency metrics
         
-        3. **Data Display:** Formatted DataFrames with custom styling.
+        3. **Interactive Visualizations:** Plotly-powered charts and graphs
         
-        4. **Statistics:** Dynamic stats cards showing key metrics.
+        4. **LLM Integration:** Natural language database querying
         
-        5. **Player Images:** Dynamic player headshots with fallback placeholders.
+        5. **Security:** Input validation and SQL injection prevention
         
-        6. **Team Colors:** NBA official team color schemes (red/blue gradients).
-        
-        7. **LLM Chat:** Natural language database querying with Claude-style responses.
-        
-        8. **CRUD System:** Complete data management with role-based permissions.
+        6. **Performance:** Cached data loading for optimal speed
         """)
 
-    st.markdown("### 🛠️ Technologies Used")
+    st.markdown("### 🛠️ Technologies")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.info("**Frontend:** Streamlit")
@@ -439,36 +419,36 @@ if page == "Project Summary":
     with col3:
         st.info("**Visualization:** Plotly")
     with col4:
-        st.info("**LLM:** Claude API")
+        st.info("**AI:** LLM Integration")
 
 # ============================================
-# TAB 2: PLAYER SEARCH
+# PLAYER SEARCH & ANALYSIS
 # ============================================
-elif page == "Player Search":
-    st.markdown("# 🔍 Player Search")
+elif page == "Player Search & Analysis":
+    st.markdown("# 🔍 Player Search & Comprehensive Analysis")
     st.markdown("---")
 
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        min_salary = int(df['salary_usd'].min())
-        max_salary = int(df['salary_usd'].max())
-
         col1, col2 = st.columns([1, 2])
 
         with col1:
-            st.markdown("### Filter Options")
+            st.markdown("### 🎯 Search Filters")
 
             name_pattern = st.text_input(
                 "Player Name:",
                 value="",
-                help="Enter part of a player's name to search (leave empty to show all)",
+                help="Search for a player",
                 placeholder="e.g., LeBron"
             )
 
             teams = ['All Teams'] + sorted(df['team_name'].unique().tolist())
-            selected_team = st.selectbox("Select Team:", teams)
+            selected_team = st.selectbox("Team:", teams)
 
+            min_salary = int(df['salary_usd'].min())
+            max_salary = int(df['salary_usd'].max())
+            
             salary_range = st.slider(
                 "Salary Range (USD):",
                 min_value=min_salary,
@@ -476,6 +456,8 @@ elif page == "Player Search":
                 value=(min_salary, max_salary),
                 format="$%d"
             )
+            
+            min_pts = st.number_input("Minimum Points:", min_value=0.0, value=0.0, step=1.0)
 
             search_button = st.button(
                 "🔎 Search Players",
@@ -484,7 +466,7 @@ elif page == "Player Search":
             )
 
         with col2:
-            st.markdown("### Search Results")
+            st.markdown("### 📊 Search Results")
 
             if search_button:
                 filtered_df = df.copy()
@@ -497,323 +479,354 @@ elif page == "Player Search":
                 
                 filtered_df = filtered_df[
                     (filtered_df['salary_usd'] >= salary_range[0]) & 
-                    (filtered_df['salary_usd'] <= salary_range[1])
+                    (filtered_df['salary_usd'] <= salary_range[1]) &
+                    (filtered_df['pts'] >= min_pts)
                 ]
                 
                 if not filtered_df.empty:
-                    st.success(f"Found {len(filtered_df)} players")
+                    st.success(f"✅ Found {len(filtered_df)} players")
                     
-                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']].copy()
+                    # Quick stats display
+                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd', 'contract_efficiency']].copy()
                     display_df['salary_usd'] = display_df['salary_usd'].apply(lambda x: f"${x:,.0f}")
-                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
+                    display_df['contract_efficiency'] = display_df['contract_efficiency'].apply(lambda x: f"{x:.2f}")
+                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary', 'Efficiency']
                     
                     st.dataframe(
                         display_df,
                         use_container_width=True,
-                        height=400,
+                        height=300,
                         hide_index=True
                     )
+                    
+                    # Player selection for detailed view
+                    st.markdown("---")
+                    st.markdown("### 👤 Select Player for Detailed Analysis")
+                    
+                    selected_player_name = st.selectbox(
+                        "Choose a player:",
+                        filtered_df['player_name'].tolist(),
+                        key='player_select'
+                    )
+                    
+                    if selected_player_name:
+                        st.session_state.selected_player = selected_player_name
+                        player_data = filtered_df[filtered_df['player_name'] == selected_player_name].iloc[0]
+                        
+                        # DETAILED PLAYER CARD
+                        st.markdown("---")
+                        
+                        # Player header with photo
+                        team_colors = get_team_colors(player_data['team_name'])
+                        
+                        st.markdown(f"""
+                            <div class='player-card' style='border-top: 5px solid {team_colors["primary"]}'>
+                                <div class='player-header'>
+                                    <img src='{get_player_image_url(selected_player_name)}' class='player-photo'>
+                                    <div>
+                                        <h1 style='margin: 0; color: {team_colors["primary"]}'>{selected_player_name}</h1>
+                                        <h3 style='margin: 5px 0; color: #666;'>{player_data['team_name']}</h3>
+                                        <p style='font-size: 1.1em; color: #888;'>Salary: ${player_data['salary_usd']:,.0f}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Performance Statistics
+                        st.markdown("### 📊 Performance Statistics")
+                        
+                        perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)
+                        
+                        with perf_col1:
+                            st.metric("Points Per Game", f"{player_data['pts']:.1f}")
+                            st.metric("Games Played", f"{player_data['gp']:.0f}")
+                        
+                        with perf_col2:
+                            st.metric("Rebounds Per Game", f"{player_data['reb']:.1f}")
+                            st.metric("Minutes Played", f"{player_data['min']:.1f}")
+                        
+                        with perf_col3:
+                            st.metric("Assists Per Game", f"{player_data['assists']:.1f}")
+                            st.metric("Field Goal %", f"{player_data['fgp']:.1f}%")
+                        
+                        with perf_col4:
+                            st.metric("3-Point %", f"{player_data['tpp']:.1f}%")
+                            st.metric("Free Throw %", f"{player_data['ftp']:.1f}%")
+                        
+                        # Value Analysis
+                        st.markdown("### 💰 Value Analysis")
+                        
+                        val_col1, val_col2, val_col3 = st.columns(3)
+                        
+                        with val_col1:
+                            st.markdown(f"""
+                                <div class='stat-box'>
+                                    <h4>Contract Efficiency Rating</h4>
+                                    <h2 style='color: #4A90E2;'>{player_data['contract_efficiency']:.2f}</h2>
+                                    <p>Stats per million dollars</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with val_col2:
+                            st.markdown(f"""
+                                <div class='stat-box'>
+                                    <h4>Player Value Index</h4>
+                                    <h2 style='color: #FF6B6B;'>{player_data['player_value_index']:.2f}</h2>
+                                    <p>Composite performance score</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with val_col3:
+                            salary_per_point = player_data['salary_usd'] / player_data['pts'] if player_data['pts'] > 0 else 0
+                            st.markdown(f"""
+                                <div class='stat-box'>
+                                    <h4>Dollars Per Point</h4>
+                                    <h2 style='color: #00C853;'>${salary_per_point:,.0f}</h2>
+                                    <p>Cost efficiency metric</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Performance Radar Chart
+                        st.markdown("### 🎯 Performance Profile")
+                        
+                        categories = ['Points', 'Rebounds', 'Assists', 'FG%', '3P%', 'FT%']
+                        values = [
+                            (player_data['pts'] / df['pts'].max()) * 100,
+                            (player_data['reb'] / df['reb'].max()) * 100,
+                            (player_data['assists'] / df['assists'].max()) * 100,
+                            player_data['fgp'],
+                            player_data['tpp'],
+                            player_data['ftp']
+                        ]
+                        
+                        fig = go.Figure()
+                        
+                        fig.add_trace(go.Scatterpolar(
+                            r=values,
+                            theta=categories,
+                            fill='toself',
+                            name=selected_player_name,
+                            line_color=team_colors['primary']
+                        ))
+                        
+                        fig.update_layout(
+                            polar=dict(
+                                radialaxis=dict(
+                                    visible=True,
+                                    range=[0, 100]
+                                )
+                            ),
+                            showlegend=True,
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Comparison with league averages
+                        st.markdown("### 📈 League Comparison")
+                        
+                        comp_data = pd.DataFrame({
+                            'Metric': ['Points', 'Rebounds', 'Assists', 'Salary (M)'],
+                            'Player': [
+                                player_data['pts'],
+                                player_data['reb'],
+                                player_data['assists'],
+                                player_data['salary_usd'] / 1000000
+                            ],
+                            'League Avg': [
+                                df['pts'].mean(),
+                                df['reb'].mean(),
+                                df['assists'].mean(),
+                                df['salary_usd'].mean() / 1000000
+                            ]
+                        })
+                        
+                        fig2 = px.bar(
+                            comp_data,
+                            x='Metric',
+                            y=['Player', 'League Avg'],
+                            barmode='group',
+                            title=f'{selected_player_name} vs League Average',
+                            color_discrete_map={'Player': team_colors['primary'], 'League Avg': '#CCCCCC'}
+                        )
+                        
+                        st.plotly_chart(fig2, use_container_width=True)
+                        
                 else:
-                    st.warning("No players found matching your criteria.")
+                    st.warning("⚠️ No players found matching your criteria.")
 
 # ============================================
-# TAB 3: ANALYTICS
+# TEAM ANALYTICS
 # ============================================
-elif page == "Analytics":
-    st.markdown("# 📊 Analytics - Salary Analysis")
+elif page == "Team Analytics":
+    st.markdown("# 🏆 Team Analytics & Salary Cap Analysis")
     st.markdown("---")
 
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        st.markdown("### Filter by Team")
+        st.markdown("### 🎯 Team Performance Analysis")
+        
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
-        selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
+        selected_team_analytics = st.selectbox("Select Team:", teams_list, key="analytics_team")
         
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
             plot_df = df[df['team_name'] == selected_team_analytics].copy()
         
-        st.markdown("---")
-        st.markdown("### Dollars per Point vs Dollars per Game")
-        st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
-        
-        fig = px.scatter(
-            plot_df,
-            x='dollars_per_point',
-            y='dollars_per_game',
-            hover_name='player_name',
-            hover_data={
-                'team_name': True,
-                'pts': ':.1f',
-                'salary_usd': ':$,.0f',
-                'dollars_per_point': ':$,.2f',
-                'dollars_per_game': ':$,.2f'
-            },
-            color='team_name',
-            size='pts',
-            size_max=20,
-            title=f'NBA Player Salary Efficiency: Dollars per Point vs Dollars per Game',
-            labels={
-                'dollars_per_point': 'Dollars per Point ($)',
-                'dollars_per_game': 'Dollars per Game ($)',
-                'team_name': 'Team',
-                'pts': 'Points',
-                'salary_usd': 'Salary'
-            }
-        )
-        
-        fig.update_layout(
-            height=600,
-            xaxis_title="Dollars per Point ($)",
-            yaxis_title="Dollars per Game ($)",
-            legend_title="Team",
-            font=dict(size=12)
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("### 📈 Key Insights")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            most_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmin()]
-            st.metric(
-                "Most Efficient ($/Point)",
-                most_efficient['player_name'],
-                f"${most_efficient['dollars_per_point']:,.2f}"
-            )
-        
-        with col2:
-            least_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmax()]
-            st.metric(
-                "Least Efficient ($/Point)",
-                least_efficient['player_name'],
-                f"${least_efficient['dollars_per_point']:,.2f}"
-            )
-        
-        with col3:
-            avg_dpp = plot_df['dollars_per_point'].mean()
-            st.metric(
-                "Average $/Point",
-                f"${avg_dpp:,.2f}",
-                "League Average"
-            )
-
-# ============================================
-# TAB 4: LLM CHAT
-# ============================================
-elif page == "LLM Chat":
-    st.markdown("# 💬 Natural Language Query Interface")
-    st.markdown("### Ask questions about NBA data in plain English")
-    st.markdown("---")
+        # Team summary metrics
+        col1, col2, col3, col4 = st.columns(  with col1:
+        st.metric("Total Players", len(plot_df))
+    with col2:
+        st.metric("Total Payroll", f"${plot_df['salary_usd'].sum() / 1000000:.1f}M")
+    with col3:
+        st.metric("Avg Player Value", f"{plot_df['player_value_index'].mean():.2f}")
+    with col4:
+        st.metric("Team Efficiency", f"{plot_df['contract_efficiency'].mean():.2f}")
     
-    if not data_loaded:
-        st.error("Data not loaded. Please check your data file.")
-    else:
-        st.info("🤖 **LLM Integration Details:**\n- Model: Claude (Anthropic API)\n- Prompt Engineering: Context-aware SQL generation\n- Security: Input validation, injection prevention, query sanitization")
+    st.markdown("---")
+    st.markdown("### 💰 Salary Efficiency Analysis")
+    st.caption("Analyzing the relationship between salary and performance metrics")
+    
+    # Scatter plot
+    fig = px.scatter(
+        plot_df,
+        x='salary_usd',
+        y='player_value_index',
+        size='pts',
+        color='team_name',
+        hover_name='player_name',
+        hover_data={
+            'team_name': True,
+            'pts': ':.1f',
+            'reb': ':.1f',
+            'assists': ':.1f',
+            'salary_usd': ':$,.0f',
+            'contract_efficiency': ':.2f'
+        },
+        title='Player Value vs Salary Analysis',
+        labels={
+            'salary_usd': 'Annual Salary (USD)',
+            'player_value_index': 'Player Value Index',
+            'team_name': 'Team'
+        }
+    )
+    
+    fig.update_layout(height=600)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("### 📊 Key Insights")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        best_value = plot_df.loc[plot_df['contract_efficiency'].idxmax()]
+        st.metric(
+            "Best Value Player",
+            best_value['player_name'],
+            f"Efficiency: {best_value['contract_efficiency']:.2f}"
+        )
+    
+    with col2:
+        highest_paid = plot_df.loc[plot_df['salary_usd'].idxmax()]
+        st.metric(
+            "Highest Paid",
+            highest_paid['player_name'],
+            f"${highest_paid['salary_usd'] / 1000000:.1f}M"
+        )
+    
+    with col3:
+        top_performer = plot_df.loc[plot_df['player_value_index'].idxmax()]
+        st.metric(
+            "Top Performer",
+            top_performer['player_name'],
+            f"PVI: {top_performer['player_value_index']:.2f}"
+        )
+============================================
+LLM QUERY ASSISTANT
+============================================
+elif page == "LLM Query Assistant":
+st.markdown("# 💬 AI-Powered Database Query Assistant")
+st.markdown("### Ask questions about NBA data in natural language")
+st.markdown("---")
+if not data_loaded:
+    st.error("Data not loaded. Please check your data file.")
+else:
+    st.info("""
+    🤖 **LLM Integration Architecture:**
+    - **Model:** Claude (Anthropic API)
+    - **Prompt Engineering:** Context-aware SQL query generation
+    - **Security:** Input validation, SQL injection prevention, query sanitization
+    - **Error Handling:** Graceful fallbacks and user-friendly error messages
+    """)
+    
+    with st.expander("📖 Example Queries You Can Try"):
+        st.markdown("""
+        - "Show me the top 5 scorers"
+        - "Show me the top 10 scorers"
+        - "What is the average salary?"
+        - "What is the average points per player?"
+        - "Which team has the highest average points?"
+        - "Show me the most efficient players"
+        - "Who has the best contract value?"
+        """)
+    
+    user_query = st.text_input(
+        "💭 Your Question:",
+        placeholder="e.g., Show me the top 10 most efficient players"
+    )
+    
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        submit_query = st.button("🚀 Ask", type="primary")
+    with col2:
+        if st.button("🗑️ Clear History"):
+            st.session_state.chat_history = []
+            st.rerun()
+    
+    if submit_query and user_query:
+        st.session_state.chat_history.append({
+            'role': 'user',
+            'content': user_query,
+            'timestamp': datetime.now().strftime('%H:%M:%S')
+        })
         
-        # Example queries
-        with st.expander("📖 Example Queries"):
-            st.markdown("""
-            - "Show me the top 5 scorers"
-            - "What is the average salary?"
-            - "What is the average points per player?"
-            - "Which team has the highest average points?"
-            """)
+        result_df, sql_query = execute_natural_language_query(user_query, df)
         
-        # Chat interface
-        user_query = st.text_input("Enter your question:", placeholder="e.g., Show me the top 10 scorers")
-        
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            submit_query = st.button("🚀 Submit", type="primary")
-        with col2:
-            if st.button("🗑️ Clear History"):
-                st.session_state.chat_history = []
-                st.rerun()
-        
-        if submit_query and user_query:
-            # Add user message to history
+        if result_df is not None:
+            response = f"✅ Query executed successfully!\n\n**Generated SQL:** `{sql_query}`\n\n**Results:**"
             st.session_state.chat_history.append({
-                'role': 'user',
-                'content': user_query,
+                'role': 'assistant',
+                'content': response,
+                'data': result_df,
                 'timestamp': datetime.now().strftime('%H:%M:%S')
             })
-            
-            # Process query
-            result_df, sql_query = execute_natural_language_query(user_query, df)
-            
-            if result_df is not None:
-                response = f"Here are the results for your query:\n\n**Generated SQL:** `{sql_query}`"
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': response,
-                    'data': result_df,
-                    'timestamp': datetime.now().strftime('%H:%M:%S')
-                })
-            else:
-                error_response = f"❌ {sql_query}"  # sql_query contains error message
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': error_response,
-                    'timestamp': datetime.now().strftime('%H:%M:%S')
-                })
-        
-        # Display chat history
-        st.markdown("---")
-        st.markdown("### 💬 Conversation History")
-        
-        for msg in st.session_state.chat_history:
-            if msg['role'] == 'user':
-                st.markdown(f"""
-                    <div class='chat-message user-message'>
-                        <strong>You ({msg['timestamp']}):</strong><br>{msg['content']}
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                    <div class='chat-message assistant-message'>
-                        <strong>Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                if 'data' in msg and msg['data'] is not None:
-                    st.dataframe(msg['data'], use_container_width=True)
-
-# ============================================
-# TAB 5: CRUD MANAGER
-# ============================================
-elif page == "CRUD Manager":
-    st.markdown("# 🛠️ CRUD Operations Manager")
-    st.markdown("### Manage Player Notes and Annotations")
-    st.markdown("---")
+        else:
+            error_response = f"❌ {sql_query}"
+            st.session_state.chat_history.append({
+                'role': 'assistant',
+                'content': error_response,
+                'timestamp': datetime.now().strftime('%H:%M:%S')
+            })
     
-    if not data_loaded:
-        st.error("Data not loaded. Please check your data file.")
-    else:
-        st.info(f"**Current Role: {st.session_state.user_role}**\n\n- **Viewer:** Can only read notes\n- **Editor:** Can create, read, and update notes\n- **Admin:** Full access (create, read, update, delete)")
-        
-        # CRUD Operations tabs
-        crud_tab1, crud_tab2, crud_tab3, crud_tab4 = st.tabs(["📝 Create", "📖 Read", "✏️ Update", "🗑️ Delete"])
-        
-        # CREATE
-        with crud_tab1:
-            st.markdown("### Create New Player Note")
+    st.markdown("---")
+    st.markdown("### 💬 Conversation History")
+    
+    for msg in st.session_state.chat_history:
+        if msg['role'] == 'user':
+            st.markdown(f"""
+                <div class='chat-message user-message'>
+                    <strong>You ({msg['timestamp']}):</strong><br>{msg['content']}
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+                <div class='chat-message assistant-message'>
+                    <strong>AI Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
+                </div>
+            """, unsafe_allow_html=True)
             
-            create_player = st.selectbox("Select Player:", df['player_name'].unique(), key='create_player')
-            create_note = st.text_area("Note Content:", placeholder="Enter your note here...")
-            
-            if st.button("💾 Create Note", type="primary"):
-                if create_note.strip():
-                    success, message = create_player_note(create_player, create_note, st.session_state.user_role)
-                    if success:
-                        st.success(message)
-                    else:
-                        st.error(message)
-                else:
-                    st.warning("Please enter a note before creating.")
-        
-        # READ
-        with crud_tab2:
-            st.markdown("### View Player Notes")
-            
-            read_player = st.selectbox("Select Player:", df['player_name'].unique(), key='read_player')
-            
-            if st.button("🔍 Load Notes"):
-                notes = read_player_notes(read_player)
-                
-                if notes:
-                    st.success(f"Found {len(notes)} note(s) for {read_player}")
-                    for idx, note in enumerate(notes):
-                        with st.expander(f"Note #{idx + 1} - {note['timestamp']}"):
-                            st.write(f"**Content:** {note['note']}")
-                            st.write(f"**Created by:** {note['user_role']}")
-                            if 'updated' in note:
-                                st.write(f"**Last updated:** {note['updated']}")
-                else:
-                    st.info(f"No notes found for {read_player}")
-        
-        # UPDATE
-        with crud_tab3:
-            st.markdown("### Update Existing Note")
-            
-            update_player = st.selectbox("Select Player:", df['player_name'].unique(), key='update_player')
-            
-            notes = read_player_notes(update_player)
-            
-            if notes:
-                note_options = [f"Note #{i+1} - {n['timestamp']}" for i, n in enumerate(notes)]
-                selected_note = st.selectbox("Select Note to Update:", note_options)
-                note_idx = int(selected_note.split('#')[1].split(' ')[0]) - 1
-                
-                current_note = notes[note_idx]['note']
-                st.text_area("Current Note:", value=current_note, disabled=True, key='current_note_display')
-                
-                new_note_content = st.text_area("New Note Content:", value=current_note, key='new_note_content')
-                
-                if st.button("💾 Update Note", type="primary"):
-                    success, message = update_player_note(update_player, note_idx, new_note_content, st.session_state.user_role)
-                    if success:
-                        st.success(message)
-                    else:
-                        st.error(message)
-            else:
-                st.info(f"No notes available for {update_player}")
-        
-        # DELETE
-        with crud_tab4:
-            st.markdown("### Delete Player Note")
-            
-            delete_player = st.selectbox("Select Player:", df['player_name'].unique(), key='delete_player')
-            
-            notes = read_player_notes(delete_player)
-            
-            if notes:
-                note_options = [f"Note #{i+1} - {n['timestamp']}" for i, n in enumerate(notes)]
-                selected_note_delete = st.selectbox("Select Note to Delete:", note_options, key='delete_note_select')
-                note_idx_delete = int(selected_note_delete.split('#')[1].split(' ')[0]) - 1
-                
-                st.warning("⚠️ **Warning:** This action cannot be undone!")
-                st.text_area("Note to be deleted:", value=notes[note_idx_delete]['note'], disabled=True)
-                
-                if st.button("🗑️ Delete Note", type="secondary"):
-                    success, message = delete_player_note(delete_player, note_idx_delete, st.session_state.user_role)
-                    if success:
-                        st.success(message)
-                        st.rerun()
-                    else:
-                        st.error(message)
-            else:
-                st.info(f"No notes available for {delete_player}")
-        
-        # Display all notes summary
-        st.markdown("---")
-        st.markdown("### 📊 Notes Summary")
-        
-        total_notes = sum(len(notes) for notes in st.session_state.player_notes.values())
-        total_players_with_notes = len(st.session_state.player_notes)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Notes", total_notes)
-        with col2:
-            st.metric("Players with Notes", total_players_with_notes)
-        with col3:
-            st.metric("Your Role", st.session_state.user_role)
-
-# ============================================
-# FOOTER
-# ============================================
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center; color: #7f8c8d; font-size: 0.9em;'>
-        ITOM6265 Database Management | NBA Dashboard with LLM Integration | Built with Streamlit
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+            if 'data' in msg and msg['data'] is not None:
+                st.dataframe(msg['data'], use_container_width=True)
