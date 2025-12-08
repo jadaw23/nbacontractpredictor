@@ -1,5 +1,5 @@
-
-# NBA Dashboard - Comprehensive Player Impact Analysis
+# ============================================
+# NBA Dashboard - Streamlit Application with LLM Integration
 # ITOM6265 - Database Project
 # ============================================
 
@@ -10,11 +10,9 @@ import plotly.graph_objects as go
 import json
 import re
 from datetime import datetime
-import numpy as np
 
-# Page configuration
 st.set_page_config(
-    page_title="NBA Player Impact Analysis",
+    page_title="ITOM6265-NBA Dashboard",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -75,7 +73,6 @@ def get_player_image_url(player_name):
 def get_team_colors(team_abbrev):
     return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
-# Initialize session state
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'selected_player' not in st.session_state:
@@ -143,32 +140,37 @@ st.markdown("""
     .player-card {
         background: white;
         border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        padding: 25px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
         margin: 20px 0;
+        border: 2px solid #4A90E2;
     }
     
     .player-header {
         display: flex;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #f0f0f0;
     }
     
-    .player-photo {
-        width: 150px;
-        height: 150px;
+    .player-photo-large {
+        width: 180px;
+        height: 180px;
         border-radius: 15px;
         object-fit: cover;
-        border: 4px solid #4A90E2;
+        border: 5px solid #4A90E2;
         margin-right: 30px;
+        box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
     }
     
     .stat-box {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 15px;
-        border-radius: 8px;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e3f2fd 100%);
+        padding: 20px;
+        border-radius: 10px;
         margin: 10px 0;
-        border-left: 4px solid #4A90E2;
+        border-left: 5px solid #4A90E2;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
     
     .chat-message {
@@ -187,16 +189,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Load Data
 @st.cache_data
 def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
-    # Add calculated metrics for comprehensive analysis
     df['contract_efficiency'] = (df['pts'] + df['reb'] + df['assists']) / (df['salary_usd'] / 1000000)
     df['player_value_index'] = df['pts'] * 0.4 + df['reb'] * 0.3 + df['assists'] * 0.3
     return df
 
-# LLM Query Generator
 def generate_sql_query(natural_language_query, df_columns):
     query_lower = natural_language_query.lower()
     
@@ -271,28 +270,26 @@ except Exception as e:
     data_loaded = False
     df = None
 
-# Sidebar
 st.sidebar.title("🏀 NBA Impact Analysis")
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["Project Overview", "Player Search & Analysis", "Team Analytics", "LLM Query Assistant"],
+    ["Project Summary", "Player Search", "Analytics", "LLM Chat"],
     help="Select a page to navigate"
 )
 st.sidebar.markdown("---")
-st.sidebar.info("**Comprehensive Player Impact Analysis Platform**\n\nMeasuring value and performance across multiple indicators")
+st.sidebar.info("**NBA Player Impact Analysis**\n\nMeasuring value and performance")
 
 # ============================================
-# PROJECT OVERVIEW
+# PROJECT SUMMARY
 # ============================================
-if page == "Project Overview":
-    st.markdown("# 📊 NBA Player Impact Analysis Platform")
-    st.markdown("### Comprehensive Player Value & Contract Efficiency Analysis")
+if page == "Project Summary":
+    st.markdown("# 📝 Project Summary")
     st.markdown("---")
 
     if data_loaded:
-        st.markdown("### 🏀 Database Overview")
+        st.markdown("### 🏀 NBA Statistics Overview")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -308,7 +305,7 @@ if page == "Project Overview":
             st.markdown(f"""
                 <div class='metric-card'>
                     <div class='metric-value'>🏆 {df['team_name'].nunique()}</div>
-                    <div class='metric-label'>Teams Tracked</div>
+                    <div class='metric-label'>Teams</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -322,20 +319,19 @@ if page == "Project Overview":
             """, unsafe_allow_html=True)
         
         with col4:
-            avg_efficiency = df['contract_efficiency'].mean()
+            avg_pts = df['pts'].mean()
             st.markdown(f"""
                 <div class='metric-card'>
-                    <div class='metric-value'>📈 {avg_efficiency:.2f}</div>
-                    <div class='metric-label'>Avg Efficiency</div>
+                    <div class='metric-value'>⭐ {avg_pts:.1f}</div>
+                    <div class='metric-label'>Avg Points</div>
                 </div>
             """, unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Top performers
-        st.markdown("### 🏆 Top 5 Most Efficient Players (Contract Value)")
+        st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
         
-        top5 = df.nlargest(5, 'contract_efficiency')[['player_name', 'team_name', 'pts', 'salary_usd', 'contract_efficiency']]
+        top5 = df.nlargest(5, 'pts')[['player_name', 'team_name', 'pts', 'salary_usd']]
         
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         colors = ["gold", "silver", "bronze", "", ""]
@@ -353,7 +349,7 @@ if page == "Project Overview":
                     <div style='flex: 1;'>
                         <strong style='font-size: 1.2em;'>{row['player_name']}</strong>
                         <div style='font-size: 0.9em; opacity: 0.9;'>
-                            ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M | 📊 Efficiency: {row['contract_efficiency']:.2f}
+                            ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M
                         </div>
                     </div>
                 </div>
@@ -366,66 +362,45 @@ if page == "Project Overview":
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("🎯 Project Objective")
+        st.subheader("🎯 Approach and Implementation")
 
         st.write("""
-        **Mission:** Build an analytical platform that measures player value in relation to cost, 
-        benchmarking performance across multiple statistical indicators to inform strategic contract decisions.
-        
-        **Key Features:**
-        - Comprehensive player impact analysis
-        - Contract efficiency ratings
-        - Performance prediction metrics
-        - Interactive player comparison tools
-        - Natural language query interface powered by LLM
-        """)
-        
-        st.markdown("### 📋 Database Scope")
-        st.write("""
-        **Player Information:** ID, name, position, stats
-        
-        **Contract Data:** Salary, contract value, efficiency
-        
-        **Performance Statistics:** Games, minutes, points, rebounds, assists, shooting percentages
-        
-        **Value Analysis:** Contract efficiency, player value index, predicted metrics
+        This NBA dashboard was built using Streamlit and Pandas to analyze player statistics 
+        and salary data. We designed the application to load data from an Excel file and provide 
+        interactive filtering and visualization capabilities. We used Plotly Express for creating the 
+        scatter plot visualization which allows for interactive exploration of the relationship 
+        between salary per point and salary per game. The dashboard demonstrates CRUD-like read operations and analytics visualizations as required.
         """)
 
     with col2:
-        st.subheader("🎨 Technical Implementation")
+        st.subheader("🎨 Customizations Made")
 
         st.write("""
-        **Data Architecture:**
+        We customized this application in several ways:
         
-        1. **Excel Database:** Centralized player and team data
+        1. **Layout:** Used Streamlit's column layout for organized displays.
         
-        2. **Real-time Analytics:** Dynamic calculation of efficiency metrics
+        2. **Visualizations:** Interactive Plotly scatter plot with hover information.
         
-        3. **Interactive Visualizations:** Plotly-powered charts and graphs
+        3. **Data Display:** Formatted DataFrames with custom styling.
         
-        4. **LLM Integration:** Natural language database querying
-        
-        5. **Security:** Input validation and SQL injection prevention
-        
-        6. **Performance:** Cached data loading for optimal speed
+        4. **Statistics:** Dynamic stats cards showing key metrics.
         """)
 
-    st.markdown("### 🛠️ Technologies")
-    col1, col2, col3, col4 = st.columns(4)
+    st.markdown("### 🛠️ Technologies Used")
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.info("**Frontend:** Streamlit")
     with col2:
         st.info("**Data:** Pandas + Excel")
     with col3:
         st.info("**Visualization:** Plotly")
-    with col4:
-        st.info("**AI:** LLM Integration")
 
 # ============================================
-# PLAYER SEARCH & ANALYSIS
+# PLAYER SEARCH
 # ============================================
-elif page == "Player Search & Analysis":
-    st.markdown("# 🔍 Player Search & Comprehensive Analysis")
+elif page == "Player Search":
+    st.markdown("# 🔍 Player Search & Analysis")
     st.markdown("---")
 
     if not data_loaded:
@@ -486,11 +461,10 @@ elif page == "Player Search & Analysis":
                 if not filtered_df.empty:
                     st.success(f"✅ Found {len(filtered_df)} players")
                     
-                    # Quick stats display
-                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd', 'contract_efficiency']].copy()
+                    # Display results table
+                    display_df = filtered_df[['player_name', 'team_name', 'pts', 'reb', 'assists', 'salary_usd']].copy()
                     display_df['salary_usd'] = display_df['salary_usd'].apply(lambda x: f"${x:,.0f}")
-                    display_df['contract_efficiency'] = display_df['contract_efficiency'].apply(lambda x: f"{x:.2f}")
-                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary', 'Efficiency']
+                    display_df.columns = ['Player', 'Team', 'Points', 'Rebounds', 'Assists', 'Salary']
                     
                     st.dataframe(
                         display_df,
@@ -510,23 +484,19 @@ elif page == "Player Search & Analysis":
                     )
                     
                     if selected_player_name:
-                        st.session_state.selected_player = selected_player_name
                         player_data = filtered_df[filtered_df['player_name'] == selected_player_name].iloc[0]
                         
-                        # DETAILED PLAYER CARD
-                        st.markdown("---")
-                        
-                        # Player header with photo
+                        # Player header with large photo
                         team_colors = get_team_colors(player_data['team_name'])
                         
                         st.markdown(f"""
-                            <div class='player-card' style='border-top: 5px solid {team_colors["primary"]}'>
+                            <div class='player-card'>
                                 <div class='player-header'>
-                                    <img src='{get_player_image_url(selected_player_name)}' class='player-photo'>
+                                    <img src='{get_player_image_url(selected_player_name)}' class='player-photo-large'>
                                     <div>
-                                        <h1 style='margin: 0; color: {team_colors["primary"]}'>{selected_player_name}</h1>
-                                        <h3 style='margin: 5px 0; color: #666;'>{player_data['team_name']}</h3>
-                                        <p style='font-size: 1.1em; color: #888;'>Salary: ${player_data['salary_usd']:,.0f}</p>
+                                        <h1 style='margin: 0; color: {team_colors["primary"]};'>{selected_player_name}</h1>
+                                        <h2 style='margin: 10px 0; color: #666;'>{player_data['team_name']}</h2>
+                                        <h3 style='color: #4A90E2; margin: 5px 0;'>Salary: ${player_data['salary_usd']:,.0f}</h3>
                                     </div>
                                 </div>
                             </div>
@@ -538,7 +508,7 @@ elif page == "Player Search & Analysis":
                         perf_col1, perf_col2, perf_col3, perf_col4 = st.columns(4)
                         
                         with perf_col1:
-                            st.metric("Points Per Game", f"{player_data['pts']:.1f}")
+                            st.metric("Points Per Game", f"{player_data['pts']:.1f}", help="Average points scored per game")
                             st.metric("Games Played", f"{player_data['gp']:.0f}")
                         
                         with perf_col2:
@@ -554,35 +524,35 @@ elif page == "Player Search & Analysis":
                             st.metric("Free Throw %", f"{player_data['ftp']:.1f}%")
                         
                         # Value Analysis
-                        st.markdown("### 💰 Value Analysis")
+                        st.markdown("### 💰 Contract Value Analysis")
                         
                         val_col1, val_col2, val_col3 = st.columns(3)
                         
                         with val_col1:
                             st.markdown(f"""
                                 <div class='stat-box'>
-                                    <h4>Contract Efficiency Rating</h4>
-                                    <h2 style='color: #4A90E2;'>{player_data['contract_efficiency']:.2f}</h2>
-                                    <p>Stats per million dollars</p>
+                                    <h4 style='color: #666; margin-top: 0;'>Contract Efficiency</h4>
+                                    <h2 style='color: #4A90E2; margin: 10px 0;'>{player_data['contract_efficiency']:.2f}</h2>
+                                    <p style='color: #888; margin-bottom: 0;'>Stats per $1M salary</p>
                                 </div>
                             """, unsafe_allow_html=True)
                         
                         with val_col2:
                             st.markdown(f"""
                                 <div class='stat-box'>
-                                    <h4>Player Value Index</h4>
-                                    <h2 style='color: #FF6B6B;'>{player_data['player_value_index']:.2f}</h2>
-                                    <p>Composite performance score</p>
+                                    <h4 style='color: #666; margin-top: 0;'>Player Value Index</h4>
+                                    <h2 style='color: #FF6B6B; margin: 10px 0;'>{player_data['player_value_index']:.2f}</h2>
+                                    <p style='color: #888; margin-bottom: 0;'>Composite performance</p>
                                 </div>
                             """, unsafe_allow_html=True)
                         
                         with val_col3:
-                            salary_per_point = player_data['salary_usd'] / player_data['pts'] if player_data['pts'] > 0 else 0
+                            dpp = player_data['dollars_per_point']
                             st.markdown(f"""
                                 <div class='stat-box'>
-                                    <h4>Dollars Per Point</h4>
-                                    <h2 style='color: #00C853;'>${salary_per_point:,.0f}</h2>
-                                    <p>Cost efficiency metric</p>
+                                    <h4 style='color: #666; margin-top: 0;'>Dollars Per Point</h4>
+                                    <h2 style='color: #00C853; margin: 10px 0;'>${dpp:,.0f}</h2>
+                                    <p style='color: #888; margin-bottom: 0;'>Cost efficiency</p>
                                 </div>
                             """, unsafe_allow_html=True)
                         
@@ -606,7 +576,8 @@ elif page == "Player Search & Analysis":
                             theta=categories,
                             fill='toself',
                             name=selected_player_name,
-                            line_color=team_colors['primary']
+                            line_color=team_colors['primary'],
+                            fillcolor=f"rgba{tuple(list(int(team_colors['primary'][i:i+2], 16) for i in (1, 3, 5)) + [0.3])}"
                         ))
                         
                         fig.update_layout(
@@ -617,174 +588,127 @@ elif page == "Player Search & Analysis":
                                 )
                             ),
                             showlegend=True,
-                            height=400
+                            height=450
                         )
                         
                         st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Comparison with league averages
-                        st.markdown("### 📈 League Comparison")
-                        
-                        comp_data = pd.DataFrame({
-                            'Metric': ['Points', 'Rebounds', 'Assists', 'Salary (M)'],
-                            'Player': [
-                                player_data['pts'],
-                                player_data['reb'],
-                                player_data['assists'],
-                                player_data['salary_usd'] / 1000000
-                            ],
-                            'League Avg': [
-                                df['pts'].mean(),
-                                df['reb'].mean(),
-                                df['assists'].mean(),
-                                df['salary_usd'].mean() / 1000000
-                            ]
-                        })
-                        
-                        fig2 = px.bar(
-                            comp_data,
-                            x='Metric',
-                            y=['Player', 'League Avg'],
-                            barmode='group',
-                            title=f'{selected_player_name} vs League Average',
-                            color_discrete_map={'Player': team_colors['primary'], 'League Avg': '#CCCCCC'}
-                        )
-                        
-                        st.plotly_chart(fig2, use_container_width=True)
                         
                 else:
                     st.warning("⚠️ No players found matching your criteria.")
 
 # ============================================
-# TEAM ANALYTICS
+# ANALYTICS
 # ============================================
-elif page == "Team Analytics":
-    st.markdown("# 🏆 Team Analytics & Salary Cap Analysis")
+elif page == "Analytics":
+    st.markdown("# 📊 Analytics - Salary Analysis")
     st.markdown("---")
 
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        st.markdown("### 🎯 Team Performance Analysis")
-        
+        st.markdown("### Filter by Team")
         teams_list = ['All Teams'] + sorted(df['team_name'].unique().tolist())
-        selected_team_analytics = st.selectbox("Select Team:", teams_list, key="analytics_team")
+        selected_team_analytics = st.selectbox("Select Team to Display:", teams_list, key="analytics_team")
         
         if selected_team_analytics == 'All Teams':
             plot_df = df.copy()
         else:
             plot_df = df[df['team_name'] == selected_team_analytics].copy()
         
-        # Team summary metrics
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Players", len(plot_df))
-        with col2:
-            st.metric("Total Payroll", f"${plot_df['salary_usd'].sum() / 1000000:.1f}M")
-        with col3:
-            st.metric("Avg Player Value", f"{plot_df['player_value_index'].mean():.2f}")
-        with col4:
-            st.metric("Team Efficiency", f"{plot_df['contract_efficiency'].mean():.2f}")
-        
         st.markdown("---")
-        st.markdown("### 💰 Salary Efficiency Analysis")
-        st.caption("Analyzing the relationship between salary and performance metrics")
+        st.markdown("### Dollars per Point vs Dollars per Game")
+        st.caption("This scatter plot shows the relationship between salary efficiency metrics for NBA players.")
         
-        # Scatter plot
         fig = px.scatter(
             plot_df,
-            x='salary_usd',
-            y='player_value_index',
-            size='pts',
-            color='team_name',
+            x='dollars_per_point',
+            y='dollars_per_game',
             hover_name='player_name',
             hover_data={
                 'team_name': True,
                 'pts': ':.1f',
-                'reb': ':.1f',
-                'assists': ':.1f',
                 'salary_usd': ':$,.0f',
-                'contract_efficiency': ':.2f'
+                'dollars_per_point': ':$,.2f',
+                'dollars_per_game': ':$,.2f'
             },
-            title='Player Value vs Salary Analysis',
+            color='team_name',
+            size='pts',
+            size_max=20,
+            title=f'NBA Player Salary Efficiency: Dollars per Point vs Dollars per Game',
             labels={
-                'salary_usd': 'Annual Salary (USD)',
-                'player_value_index': 'Player Value Index',
-                'team_name': 'Team'
+                'dollars_per_point': 'Dollars per Point ($)',
+                'dollars_per_game': 'Dollars per Game ($)',
+                'team_name': 'Team',
+                'pts': 'Points',
+                'salary_usd': 'Salary'
             }
         )
         
-        fig.update_layout(height=600)
+        fig.update_layout(
+            height=600,
+            xaxis_title="Dollars per Point ($)",
+            yaxis_title="Dollars per Game ($)",
+            legend_title="Team",
+            font=dict(size=12)
+        )
+        
         st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("### 📊 Key Insights")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            best_value = plot_df.loc[plot_df['contract_efficiency'].idxmax()]
-            st.metric(
-                "Best Value Player",
-                best_value['player_name'],
-                f"Efficiency: {best_value['contract_efficiency']:.2f}"
-            )
-        
-        with col2:
-            highest_paid = plot_df.loc[plot_df['salary_usd'].idxmax()]
-            st.metric(
-                "Highest Paid",
-                highest_paid['player_name'],
-                f"${highest_paid['salary_usd'] / 1000000:.1f}M"
-            )
-        
-        with col3:
-            top_performer = plot_df.loc[plot_df['player_value_index'].idxmax()]
-            st.metric(
-                "Top Performer",
-                top_performer['player_name'],
-                f"PVI: {top_performer['player_value_index']:.2f}"
-            )
+
+st.markdown("---")
+st.markdown("### 📈 Key Insights")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    most_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmin()]
+    st.metric(
+        "Most Efficient ($/Point)",
+        most_efficient['player_name'],
+        f"${most_efficient['dollars_per_point']:,.2f}"
+    )
+
+with col2:
+    least_efficient = plot_df.loc[plot_df['dollars_per_point'].idxmax()]
+    st.metric(
+        "Least Efficient ($/Point)",
+        least_efficient['player_name'],
+        f"${least_efficient['dollars_per_point']:,.2f}"
+    )
+
+with col3:
+    avg_dpp = plot_df['dollars_per_point'].mean()
+    st.metric(
+        "Average $/Point",
+        f"${avg_dpp:,.2f}",
+        "League Average"
+    )
 
 # ============================================
-# LLM QUERY ASSISTANT
+# LLM CHAT
 # ============================================
-elif page == "LLM Query Assistant":
-    st.markdown("# 💬 AI-Powered Database Query Assistant")
-    st.markdown("### Ask questions about NBA data in natural language")
+elif page == "LLM Chat":
+    st.markdown("# 💬 Natural Language Query Interface")
+    st.markdown("### Ask questions about NBA data in plain English")
     st.markdown("---")
     
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        st.info("""
-        🤖 **LLM Integration Architecture:**
-        - **Model:** Claude (Anthropic API)
-        - **Prompt Engineering:** Context-aware SQL query generation
-        - **Security:** Input validation, SQL injection prevention, query sanitization
-        - **Error Handling:** Graceful fallbacks and user-friendly error messages
-        """)
+        st.info("🤖 **LLM Integration Details:**\n- Model: Claude (Anthropic API)\n- Prompt Engineering: Context-aware SQL generation\n- Security: Input validation, injection prevention, query sanitization")
         
-        with st.expander("📖 Example Queries You Can Try"):
+        with st.expander("📖 Example Queries"):
             st.markdown("""
             - "Show me the top 5 scorers"
-            - "Show me the top 10 scorers"
             - "What is the average salary?"
             - "What is the average points per player?"
             - "Which team has the highest average points?"
-            - "Show me the most efficient players"
-            - "Who has the best contract value?"
             """)
         
-        user_query = st.text_input(
-            "💭 Your Question:",
-            placeholder="e.g., Show me the top 10 most efficient players"
-        )
+        user_query = st.text_input("Enter your question:", placeholder="e.g., Show me the top 10 scorers")
         
         col1, col2 = st.columns([1, 5])
         with col1:
-            submit_query = st.button("🚀 Ask", type="primary")
+            submit_query = st.button("🚀 Submit", type="primary")
         with col2:
             if st.button("🗑️ Clear History"):
                 st.session_state.chat_history = []
@@ -800,7 +724,7 @@ elif page == "LLM Query Assistant":
             result_df, sql_query = execute_natural_language_query(user_query, df)
             
             if result_df is not None:
-                response = f"✅ Query executed successfully!\n\n**Generated SQL:** `{sql_query}`\n\n**Results:**"
+                response = f"Here are the results for your query:\n\n**Generated SQL:** `{sql_query}`"
                 st.session_state.chat_history.append({
                     'role': 'assistant',
                     'content': response,
@@ -828,7 +752,7 @@ elif page == "LLM Query Assistant":
             else:
                 st.markdown(f"""
                     <div class='chat-message assistant-message'>
-                        <strong>AI Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
+                        <strong>Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
                     </div>
                 """, unsafe_allow_html=True)
                 
@@ -840,7 +764,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: right; color: #7f8c8d; font-size: 0.9em; padding-right: 20px;'>
-        ITOM6265 Database Management | NBA Player Impact Analysis Platform | Built with Streamlit & LLM Integration
+        ITOM6265 Database Management | NBA Dashboard with LLM Integration | Built with Streamlit
     </div>
     """,
     unsafe_allow_html=True
