@@ -642,6 +642,7 @@ elif page == "Analytics":
             plot_df,
             x='dollars_per_point',
             y='dollars_per_game',
+            custom_data=['player_name'],
             hover_name='player_name',
             hover_data={
                 'team_name': True,
@@ -663,7 +664,6 @@ elif page == "Analytics":
             }
         )
 
-        fig.update_traces(customdata=plot_df['player_name'])
         fig.update_layout(
             height=600,
             xaxis_title="Dollars per Point ($)",
@@ -675,7 +675,7 @@ elif page == "Analytics":
         def on_analytics_click(trace, points, state):
             if points.point_inds:
                 idx = points.point_inds[0]
-                st.session_state.analytics_click_player = trace.customdata[idx]
+                st.session_state.analytics_click_player = trace.customdata[idx][0]
 
         plot_kwargs = {"use_container_width": True}
         if supports_plotly_click():
