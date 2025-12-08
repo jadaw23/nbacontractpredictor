@@ -50,21 +50,32 @@ NBA_COLORS = {
     'WAS': {'primary': '#002B5C', 'secondary': '#E31837'}
 }
 
-# Player headshot URL generator
+# Player headshot mapping - add more players as needed
+PLAYER_IMAGES = {
+    'Gilgeous-Alexander Shai': 'https://cdn.nba.com/headshots/nba/latest/1040x760/1628983.png',
+    'Antetokounmpo Giannis': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203507.png',
+    'Jokic Nikola': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203999.png',
+    'Doncic Luka': 'https://cdn.nba.com/headshots/nba/latest/1040x760/1629029.png',
+    'Edwards Anthony': 'https://cdn.nba.com/headshots/nba/latest/1040x760/1630162.png',
+    'Tatum Jayson': 'https://cdn.nba.com/headshots/nba/latest/1040x760/1628369.png',
+    'Durant Kevin': 'https://cdn.nba.com/headshots/nba/latest/1040x760/201142.png',
+    'Curry Stephen': 'https://cdn.nba.com/headshots/nba/latest/1040x760/201939.png',
+    'James LeBron': 'https://cdn.nba.com/headshots/nba/latest/1040x760/2544.png',
+    'Embiid Joel': 'https://cdn.nba.com/headshots/nba/latest/1040x760/203954.png',
+}
+
 def get_player_image_url(player_name):
-    """Generate NBA headshot URL from player name"""
-    # Format: first initial + last name, lowercase, no spaces
-    parts = player_name.strip().split()
-    if len(parts) >= 2:
-        first_initial = parts[0][0].lower()
-        last_name = ''.join(parts[1:]).lower()
-        player_id = f"{last_name}{first_initial}"
-        return f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png"
-    return None
+    """Get player headshot URL"""
+    # Check if we have a direct mapping
+    if player_name in PLAYER_IMAGES:
+        return PLAYER_IMAGES[player_name]
+    
+    # Otherwise return a placeholder with player initials
+    return f"https://ui-avatars.com/api/?name={player_name.replace(' ', '+')}&size=200&background=f57c00&color=fff&bold=true"
 
 def get_team_colors(team_abbrev):
     """Get team colors from abbreviation"""
-    return NBA_COLORS.get(team_abbrev, {'primary': '#f57c00', 'secondary': '#ff9800'})
+    return NBA_COLORS.get(team_abbrev, {'primary': '#007AC1', 'secondary': '#EF3B24'})
 
 # Custom CSS for styling
 st.markdown("""
@@ -86,13 +97,12 @@ st.markdown("""
         opacity: 0.9;
     }
     .top-player {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         padding: 15px;
         border-radius: 8px;
         margin: 10px 0;
         display: flex;
         align-items: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
     .player-img {
         width: 60px;
@@ -101,11 +111,11 @@ st.markdown("""
         object-fit: cover;
         margin-right: 15px;
         border: 3px solid white;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
-    .gold { border-left: 4px solid #FFD700 !important; }
-    .silver { border-left: 4px solid #C0C0C0 !important; }
-    .bronze { border-left: 4px solid #CD7F32 !important; }
+    .gold { border-left: 5px solid #FFD700 !important; }
+    .silver { border-left: 5px solid #C0C0C0 !important; }
+    .bronze { border-left: 5px solid #CD7F32 !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -201,16 +211,17 @@ if page == "HW Summary":
             salary_m = row['salary_usd'] / 1000000
             img_url = get_player_image_url(row['player_name'])
             
-            # Fallback image if player image not found
-            img_tag = f'<img src="{img_url}" class="player-img" onerror="this.src=\'https://via.placeholder.com/60x60.png?text={row["player_name"][0]}\'">' if img_url else ""
+            # Get team abbreviation from team_name (e.g., "OKC" from team_name column)
+            team_abbrev = row['team_name']  # Assuming team_name is already abbreviated
+            team_colors = get_team_colors(team_abbrev)
             
             st.markdown(f"""
-                <div class='top-player {colors[idx]}'>
+                <div class='top-player {colors[idx]}' style='background: linear-gradient(135deg, {team_colors['primary']} 0%, {team_colors['secondary']} 100%); color: white;'>
                     <span style='font-size: 1.5em; margin-right: 10px;'>{medals[idx]}</span>
-                    {img_tag}
+                    <img src="{img_url}" class="player-img">
                     <div style='flex: 1;'>
                         <strong style='font-size: 1.2em;'>{row['player_name']}</strong>
-                        <div style='font-size: 0.9em; color: #7f8c8d;'>
+                        <div style='font-size: 0.9em; opacity: 0.9;'>
                             ⭐ {row['pts']:.1f} pts | 🏀 {row['team_name']} | 💰 ${salary_m:.1f}M
                         </div>
                     </div>
@@ -232,7 +243,7 @@ if page == "HW Summary":
         filtering and visualization capabilities. I used Plotly Express for creating the 
         scatter plot visualization which allows for interactive exploration of the relationship 
         between salary per point and salary per game. Player images are dynamically loaded using 
-        NBA's CDN headshot URLs.
+        NBA's CDN headshot URLs with fallback avatars.
         """)
 
     with col2:
@@ -243,7 +254,7 @@ if page == "HW Summary":
         
         1. **Player Images:** Dynamic player headshots with fallback placeholders.
         
-        2. **Team Colors:** NBA official team color schemes for visualizations.
+        2. **Team Colors:** NBA official team color schemes (red/blue gradients).
         
         3. **Layout:** Enhanced column layout with images and styled cards.
         
