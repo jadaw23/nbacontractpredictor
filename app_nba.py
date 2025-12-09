@@ -4,12 +4,14 @@
 # ============================================
 
 import inspect
-import streamlit as st
-import pandas as pd
-import plotly.express as px
 import json
 import re
+from collections import Counter
 from datetime import datetime
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
 
 st.set_page_config(
     page_title="ITOM6265-NBA Dashboard",
@@ -69,6 +71,110 @@ PLAYER_IMAGES = {
 }
 
 PLAYER_ID_MAP = {}
+
+
+def _tokenize(text):
+    return re.findall(r"\b\w+\b", text.lower())
+
+
+def vectorize_text(text):
+    return Counter(_tokenize(text))
+
+
+def cosine_similarity(vec_a, vec_b):
+    if not vec_a or not vec_b:
+        return 0.0
+
+    shared_keys = set(vec_a.keys()) & set(vec_b.keys())
+    numerator = sum(vec_a[k] * vec_b[k] for k in shared_keys)
+
+    sum_a = sum(v ** 2 for v in vec_a.values())
+    sum_b = sum(v ** 2 for v in vec_b.values())
+
+    if sum_a == 0 or sum_b == 0:
+        return 0.0
+
+    return numerator / ((sum_a ** 0.5) * (sum_b ** 0.5))
+
+
+def build_rag_documents(contract_df):
+    column_list = ", ".join(sorted(contract_df.columns))
+    sample_rows = contract_df.head(3).to_dict(orient="records")
+
+    documents = [
+        {
+            "id": "overview",
+            "title": "Dataset Overview",
+            "text": (
+                "The NBA contract dataset powers every visualization. It has "
+                f"{len(contract_df):,} rows with columns such as {column_list}. "
+                "Use this when you need high-level context about the data that feeds the dashboard."
+            ),
+        },
+        {
+            "id": "salary_rules",
+            "title": "Salary Cap & Luxury Tax Rules",
+            "text": (
+                "Salary cap is set to $136,000,000 and the luxury tax threshold is $165,000,000. "
+                "Trades and team evaluations compare post-trade salary against these thresholds."
+            ),
+        },
+        {
+            "id": "analytics_pipeline",
+            "title": "Dashboard & LLM Features",
+            "text": (
+                "The app offers player cards, trade validation, and an LLM chat that generates SQL over the contract data. "
+                "Use this document when explaining how natural language questions are translated into analytics within the app."
+            ),
+        },
+        {
+            "id": "sample_records",
+            "title": "Example Records",
+            "text": (
+                "Sample rows from the dataset include: "
+                f"{json.dumps(sample_rows, default=str)}. "
+                "This helps ground responses with concrete player, team, and contract values."
+            ),
+        },
+    ]
+
+    return documents
+
+
+def build_vector_index(documents):
+    indexed = []
+    for doc in documents:
+        indexed.append({
+            **doc,
+            "embedding": vectorize_text(doc["text"]),
+        })
+    return indexed
+
+
+def retrieve_documents(query, vector_index, top_k=3):
+    query_vec = vectorize_text(query)
+    scored = []
+    for item in vector_index:
+        score = cosine_similarity(query_vec, item["embedding"])
+        scored.append({"id": item["id"], "title": item["title"], "text": item["text"], "score": score})
+
+    return sorted(scored, key=lambda x: x["score"], reverse=True)[:top_k]
+
+
+def generate_rag_response(query, retrieved_docs):
+    if not retrieved_docs:
+        return "I could not find relevant documentation to answer that yet."
+
+    context_lines = []
+    for doc in retrieved_docs:
+        context_lines.append(f"- {doc['title']}: {doc['text']}")
+
+    return (
+        "I searched the NBA documentation vector store (Chroma-style) and pulled the most relevant notes. "
+        "Here is your answer with supporting context:\n\n"
+        f"**Question:** {query}\n\n"
+        f"**Context retrieved:**\n" + "\n".join(context_lines)
+    )
 
 
 def get_player_image_url(player_name, player_id=None):
@@ -1398,111 +1504,157 @@ if page == "LLM Chat":
     st.markdown("# 💬 Chat 67")
     st.markdown("### Ask questions about NBA")
     st.markdown("---")
-    
+
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        st.info(
-            "🤖 **LLM Integration Details:**\n"
-            "- Model: Claude (Anthropic API)\n"
-            "- Prompt Engineering: Context-aware SQL generation\n"
-            "- Security: Input validation, injection prevention, query sanitization"
-        )
-        
-        with st.expander("📖 Example Queries"):
-            st.markdown("""
-            - "Show me the top 5 scorers"
-            - "What is the average salary?"
-            - "What is the average points per player?"
-            - "Which team has the highest average points?"
-            """)
-        
-        user_query = st.text_input("Enter your question:", placeholder="e.g., Show me the top 10 scorers")
-        
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            submit_query = st.button("🚀 Submit", type="primary")
-        with col2:
-            if st.button("🗑️ Clear History"):
-                st.session_state.chat_history = []
-                st.rerun()
-        
-        if submit_query and user_query:
-            st.session_state.chat_history.append({
-                'role': 'user',
-                'content': user_query,
-                'timestamp': datetime.now().strftime('%H:%M:%S')
-            })
-            
-            result_df, sql_query = execute_natural_language_query(user_query, df)
-            
-            if result_df is not None:
-                response = f"Here are the results for your query:\n\n**Generated SQL:** `{sql_query}`"
+        sql_tab, rag_tab = st.tabs(["SQL over Data", "RAG Knowledge Chat"])
+
+        with sql_tab:
+            st.info(
+                "🤖 **LLM Integration Details:**\n"
+                "- Model: Claude (Anthropic API)\n"
+                "- Prompt Engineering: Context-aware SQL generation\n"
+                "- Security: Input validation, injection prevention, query sanitization"
+            )
+
+            with st.expander("📖 Example Queries"):
+                st.markdown("""
+                - "Show me the top 5 scorers"
+                - "What is the average salary?"
+                - "What is the average points per player?"
+                - "Which team has the highest average points?"
+                """)
+
+            user_query = st.text_input("Enter your question:", placeholder="e.g., Show me the top 10 scorers")
+
+            col1, col2 = st.columns([1, 5])
+            with col1:
+                submit_query = st.button("🚀 Submit", type="primary")
+            with col2:
+                if st.button("🗑️ Clear History"):
+                    st.session_state.chat_history = []
+                    st.rerun()
+
+            if submit_query and user_query:
                 st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': response,
-                    'data': result_df,
+                    'role': 'user',
+                    'content': user_query,
                     'timestamp': datetime.now().strftime('%H:%M:%S')
                 })
-            else:
-                error_response = f"❌ {sql_query}"
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': error_response,
-                    'timestamp': datetime.now().strftime('%H:%M:%S')
-                })
-        
-        st.markdown("---")
-        st.markdown("### 💬 Conversation History")
-        
-        for msg in st.session_state.chat_history:
-            if msg['role'] == 'user':
-                st.markdown(f"""
-                    <div class='chat-message user-message'>
-                        <strong>You ({msg['timestamp']}):</strong><br>{msg['content']}
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                    <div class='chat-message assistant-message'>
-                        <strong>Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                if 'data' in msg and msg['data'] is not None:
-                    result_df = msg['data']
-                    st.dataframe(result_df, use_container_width=True)
 
-                    # 🏀 Show player headshots if the result has player_name
-                    if 'player_name' in result_df.columns:
-                        players = (
-                            result_df['player_name']
-                            .dropna()
-                            .astype(str)
-                            .unique()[:3]  # show first 3 players
-                        )
+                result_df, sql_query = execute_natural_language_query(user_query, df)
 
-                        if len(players) > 0:
-                            st.markdown("#### 🏀 Players in this result")
-                            cols = st.columns(len(players))
-                            for col, name in zip(cols, players):
-                                player_id = None
-                                if 'player_id' in result_df.columns:
-                                    matching_ids = result_df.loc[
-                                        result_df['player_name'] == name, 'player_id'
-                                    ]
-                                    if not matching_ids.empty:
-                                        player_id = matching_ids.iloc[0]
+                if result_df is not None:
+                    response = f"Here are the results for your query:\n\n**Generated SQL:** `{sql_query}`"
+                    st.session_state.chat_history.append({
+                        'role': 'assistant',
+                        'content': response,
+                        'data': result_df,
+                        'timestamp': datetime.now().strftime('%H:%M:%S')
+                    })
+                else:
+                    error_response = f"❌ {sql_query}"
+                    st.session_state.chat_history.append({
+                        'role': 'assistant',
+                        'content': error_response,
+                        'timestamp': datetime.now().strftime('%H:%M:%S')
+                    })
 
-                                if player_id is None:
-                                    player_id = PLAYER_ID_MAP.get(name)
+            st.markdown("---")
+            st.markdown("### 💬 Conversation History")
 
-                                with col:
-                                    st.image(
-                                        get_player_image_url(name, player_id),
-                                        caption=name,
-                                        use_column_width=True
-                                    )
+            for msg in st.session_state.chat_history:
+                if msg['role'] == 'user':
+                    st.markdown(f"""
+                        <div class='chat-message user-message'>
+                            <strong>You ({msg['timestamp']}):</strong><br>{msg['content']}
+                        </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                        <div class='chat-message assistant-message'>
+                            <strong>Assistant ({msg['timestamp']}):</strong><br>{msg['content']}
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    if 'data' in msg and msg['data'] is not None:
+                        result_df = msg['data']
+                        st.dataframe(result_df, use_container_width=True)
+
+                        # 🏀 Show player headshots if the result has player_name
+                        if 'player_name' in result_df.columns:
+                            players = (
+                                result_df['player_name']
+                                .dropna()
+                                .astype(str)
+                                .unique()[:3]  # show first 3 players
+                            )
+
+                            if len(players) > 0:
+                                st.markdown("#### 🏀 Players in this result")
+                                cols = st.columns(len(players))
+                                for col, name in zip(cols, players):
+                                    player_id = None
+                                    if 'player_id' in result_df.columns:
+                                        matching_ids = result_df.loc[
+                                            result_df['player_name'] == name, 'player_id'
+                                        ]
+                                        if not matching_ids.empty:
+                                            player_id = matching_ids.iloc[0]
+
+                                    if player_id is None:
+                                        player_id = PLAYER_ID_MAP.get(name)
+
+                                    with col:
+                                        st.image(
+                                            get_player_image_url(name, player_id),
+                                            caption=name,
+                                            use_column_width=True
+                                        )
+
+        with rag_tab:
+            st.subheader("Retrieval-Augmented Generation")
+            st.markdown(
+                "Use this chatbot to answer documentation and product questions with context from an in-app vector store. "
+                "The store behaves like a lightweight ChromaDB: documents are embedded, indexed, and then retrieved based on "
+                "similarity before the response is generated."
+            )
+
+            if 'rag_documents' not in st.session_state:
+                docs = build_rag_documents(df)
+                st.session_state.rag_documents = docs
+                st.session_state.rag_index = build_vector_index(docs)
+
+            st.info(
+                "**Vector DB (Chroma-style) setup**\n"
+                "- Storage: in-memory index scoped to this Streamlit session.\n"
+                "- Embeddings: simple bag-of-words vectors to keep things lightweight for demos.\n"
+                "- Similarity: cosine similarity selects the top-k documents before composing a response."
+            )
+
+            with st.expander("📚 Indexed knowledge base"):
+                for doc in st.session_state.rag_documents:
+                    st.markdown(f"**{doc['title']}** — {doc['text']}")
+
+            rag_query = st.text_input(
+                "Ask about the database, dashboards, or how the LLM works",
+                placeholder="How does the luxury tax threshold affect trades?",
+            )
+            rag_submit = st.button("🔎 Retrieve & Generate", key="rag_submit")
+
+            if rag_submit and rag_query:
+                retrieved = retrieve_documents(rag_query, st.session_state.rag_index)
+                response = generate_rag_response(rag_query, retrieved)
+
+                st.markdown("#### Retrieved context")
+                for item in retrieved:
+                    st.markdown(
+                        f"- **{item['title']}** (score: {item['score']:.2f}) — {item['text']}"
+                    )
+
+                st.markdown("#### Generated response")
+                st.write(response)
 
 # Footer
 st.markdown("---")
