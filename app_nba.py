@@ -379,8 +379,8 @@ page = st.sidebar.radio(
         "Project Summary",
         "Player Search",
         "Analytics",
-        "🔥 Top Feature to Add (Most Impressive)",
-        "LLM Chat",
+        "Contract Efficiency Score",
+        "Chat 67",
     ],
     help="Select a page to navigate"
 )
@@ -751,7 +751,7 @@ elif page == "Analytics":
 # ============================================
 # TOP FEATURE - CONTRACT EFFICIENCY SCORE
 # ============================================
-elif page == "🔥 Top Feature to Add (Most Impressive)":
+elif page == "Contract Efficiency Score":
     st.markdown("# 🔥 Contract Efficiency Score (CES)")
     st.markdown("---")
 
@@ -859,7 +859,7 @@ elif page == "🔥 Top Feature to Add (Most Impressive)":
 # ============================================
 # LLM CHAT
 # ============================================
-if page == "LLM Chat":
+if page == "Chat 67":
     st.markdown("# 💬 Chat 67")
     st.markdown("### Ask questions about NBA")
     st.markdown("---")
