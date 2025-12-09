@@ -472,8 +472,10 @@ if page == "Project Summary":
                 color='team_name',
                 title='Top 10 Scorers (PPG)',
                 labels={'player_name': 'Player', 'pts': 'Points per Game', 'team_name': 'Team'},
+                text='pts',
             )
-            ppg_fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False)
+            ppg_fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            ppg_fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, uniformtext_minsize=8)
             st.plotly_chart(ppg_fig, use_container_width=True)
 
         with col_salary:
@@ -484,8 +486,10 @@ if page == "Project Summary":
                 color='team_name',
                 title='Top 10 Highest Salaries',
                 labels={'player_name': 'Player', 'salary_usd': 'Salary (USD)', 'team_name': 'Team'},
+                text='salary_usd',
             )
-            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False)
+            salary_fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False, uniformtext_minsize=8)
             st.plotly_chart(salary_fig, use_container_width=True)
 
     st.markdown("---")
