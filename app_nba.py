@@ -751,7 +751,7 @@ elif page == "Analytics":
 # ============================================
 # TOP FEATURE - CONTRACT EFFICIENCY SCORE
 # ============================================
-elif page == "Contract Efficiency Score":
+elif page == "🔥 contract efficiency score":
     st.markdown("# 🔥 Contract Efficiency Score (CES)")
     st.markdown("---")
 
