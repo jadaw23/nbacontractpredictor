@@ -428,9 +428,9 @@ if page == "Project Summary":
             """, unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
-        
+
         st.markdown("### 🏆 Hall of Fame - Top 5 Scorers")
-        
+
         top5 = df.nlargest(5, 'pts')[['player_name', 'player_id', 'team_name', 'pts', 'salary_usd']]
         
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
@@ -454,8 +454,41 @@ if page == "Project Summary":
                     </div>
                 </div>
             """, unsafe_allow_html=True)
-        
+
         st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("### 📊 Quick Player Insights")
+
+        top_ppg = df.nlargest(10, 'pts')[['player_name', 'pts', 'team_name']]
+        top_salary = df.nlargest(10, 'salary_usd')[['player_name', 'salary_usd', 'team_name']]
+
+        col_ppg, col_salary = st.columns(2)
+
+        with col_ppg:
+            ppg_fig = px.bar(
+                top_ppg,
+                x='player_name',
+                y='pts',
+                color='team_name',
+                title='Top 10 Scorers (PPG)',
+                labels={'player_name': 'Player', 'pts': 'Points per Game', 'team_name': 'Team'},
+            )
+            ppg_fig.update_traces(text=top_ppg['pts'].apply(lambda pts: f"{pts:.1f}"), textposition='outside')
+            ppg_fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False)
+            st.plotly_chart(ppg_fig, use_container_width=True)
+
+        with col_salary:
+            salary_fig = px.bar(
+                top_salary,
+                x='player_name',
+                y='salary_usd',
+                color='team_name',
+                title='Top 10 Highest Salaries',
+                labels={'player_name': 'Player', 'salary_usd': 'Salary (USD)', 'team_name': 'Team'},
+            )
+            salary_fig.update_traces(text=top_salary['salary_usd'].apply(lambda val: f"${val:,.0f}"), textposition='outside')
+            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False)
+            st.plotly_chart(salary_fig, use_container_width=True)
 
     st.markdown("---")
 
