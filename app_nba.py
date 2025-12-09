@@ -238,6 +238,37 @@ def ensure_salary_efficiency_columns(df):
     return df
 
 
+def calculate_contract_efficiency(df):
+    """Derive the Contract Efficiency Score (CES) and value tiers for each player."""
+    work_df = df.copy()
+
+    numeric_cols = ['salary_usd', 'pts', 'reb', 'assists']
+    for col in numeric_cols:
+        if col in work_df.columns:
+            work_df[col] = pd.to_numeric(work_df[col], errors='coerce').fillna(0)
+        else:
+            work_df[col] = 0
+
+    salary_millions = work_df['salary_usd'] / 1_000_000
+    salary_millions = salary_millions.replace({0: pd.NA})
+
+    impact_score = (work_df['pts'] * 0.6) + (work_df['reb'] * 0.25) + (work_df['assists'] * 0.15)
+    work_df['contract_efficiency_score'] = (impact_score / salary_millions).fillna(0)
+
+    percentiles = work_df['contract_efficiency_score'].quantile([0.4, 0.75]).to_list()
+    lower_cutoff, upper_cutoff = percentiles if len(percentiles) == 2 else (0, 0)
+
+    def value_tier(score):
+        if score >= upper_cutoff:
+            return "Underpaid (High Value)"
+        if score >= lower_cutoff:
+            return "Fairly Paid"
+        return "Overpaid"
+
+    work_df['contract_value_label'] = work_df['contract_efficiency_score'].apply(value_tier)
+    return work_df
+
+
 @st.cache_data
 def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
@@ -338,7 +369,13 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["Project Summary", "Player Search", "Analytics", "LLM Chat"],
+    [
+        "Project Summary",
+        "Player Search",
+        "Analytics",
+        "🔥 Top Feature to Add (Most Impressive)",
+        "LLM Chat",
+    ],
     help="Select a page to navigate"
 )
 st.sidebar.markdown("---")
@@ -703,6 +740,113 @@ elif page == "Analytics":
                     </div>
                 </div>
             """, unsafe_allow_html=True)
+
+
+# ============================================
+# TOP FEATURE - CONTRACT EFFICIENCY SCORE
+# ============================================
+elif page == "🔥 Top Feature to Add (Most Impressive)":
+    st.markdown("# 🔥 Contract Efficiency Score (CES)")
+    st.markdown("---")
+
+    st.markdown(
+        """
+        **One score that compares player performance vs salary**
+
+        - Instantly shows who is underpaid, fairly paid, or overpaid
+        - Front offices can sort rosters by best contract value
+        - Perfect for executives because it turns complex stats into one decision metric
+        """
+    )
+
+    if not data_loaded:
+        st.error("Data not loaded. Please check your data file.")
+    else:
+        ces_df = calculate_contract_efficiency(df)
+
+        st.markdown("### 🧮 How CES is calculated")
+        st.info(
+            "Impact Score = (Points × 60%) + (Rebounds × 25%) + (Assists × 15%)  — scaled by salary in millions to create CES."
+        )
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Median CES",
+                f"{ces_df['contract_efficiency_score'].median():.2f}",
+                help="Higher = more production for every $1M in salary"
+            )
+
+        with col2:
+            top_player = ces_df.loc[ces_df['contract_efficiency_score'].idxmax()]
+            st.metric(
+                "Top Value Player",
+                top_player['player_name'],
+                f"CES {top_player['contract_efficiency_score']:.2f}"
+            )
+
+        with col3:
+            value_counts = ces_df['contract_value_label'].value_counts()
+            underpaid = value_counts.get("Underpaid (High Value)", 0)
+            st.metric(
+                "High-Value Contracts",
+                f"{underpaid} players",
+                help="Count of players in the top CES tier"
+            )
+
+        st.markdown("---")
+        st.markdown("### 🧭 CES Classifications")
+        st.caption("Automatically labels each contract based on percentile cutoffs of CES.")
+
+        label_colors = {
+            "Underpaid (High Value)": "#4CAF50",
+            "Fairly Paid": "#FFC107",
+            "Overpaid": "#F44336",
+        }
+
+        for label, color in label_colors.items():
+            st.markdown(
+                f"<div class='stat-box' style='border-left-color:{color};'><strong style='color:{color};'>{label}:</strong> {ces_df[ces_df['contract_value_label'] == label].shape[0]} players</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("---")
+        st.markdown("### 📋 CES Leaderboard (Best to Worst Value)")
+
+        display_cols = [
+            'player_name',
+            'team_name',
+            'contract_efficiency_score',
+            'contract_value_label',
+            'salary_usd',
+            'pts',
+            'reb',
+            'assists',
+        ]
+
+        leaderboard_df = ces_df[display_cols].sort_values(
+            by='contract_efficiency_score', ascending=False
+        )
+        leaderboard_df = leaderboard_df.rename(columns={
+            'player_name': 'Player',
+            'team_name': 'Team',
+            'contract_efficiency_score': 'CES',
+            'contract_value_label': 'Value Label',
+            'salary_usd': 'Salary (USD)',
+            'pts': 'PTS',
+            'reb': 'REB',
+            'assists': 'AST',
+        })
+
+        st.dataframe(
+            leaderboard_df,
+            use_container_width=True,
+            column_config={
+                "Salary (USD)": st.column_config.NumberColumn(format="$%,d"),
+                "CES": st.column_config.NumberColumn(format="%.2f"),
+            },
+            height=500,
+        )
 
 
 # ============================================
