@@ -239,7 +239,7 @@ def ensure_salary_efficiency_columns(df):
 
 
 def calculate_contract_efficiency(df):
-    """Derive the Contract Efficiency Score (CES) and value tiers for each player."""
+    """Derive the Contract Efficiency Score (CES) with normalized production and value tiers."""
     work_df = df.copy()
 
     numeric_cols = ['salary_usd', 'pts', 'reb', 'assists']
@@ -249,20 +249,34 @@ def calculate_contract_efficiency(df):
         else:
             work_df[col] = 0
 
+    stat_max = {
+        'pts': max(work_df['pts'].max(), 1),
+        'reb': max(work_df['reb'].max(), 1),
+        'assists': max(work_df['assists'].max(), 1),
+    }
+
+    work_df['norm_pts'] = work_df['pts'] / stat_max['pts']
+    work_df['norm_reb'] = work_df['reb'] / stat_max['reb']
+    work_df['norm_assists'] = work_df['assists'] / stat_max['assists']
+
     salary_millions = work_df['salary_usd'] / 1_000_000
     salary_millions = salary_millions.replace({0: pd.NA})
 
-    impact_score = (work_df['pts'] * 0.6) + (work_df['reb'] * 0.25) + (work_df['assists'] * 0.15)
-    work_df['contract_efficiency_score'] = (impact_score / salary_millions).fillna(0)
+    normalized_performance = (
+        (work_df['norm_pts'] * 0.6)
+        + (work_df['norm_reb'] * 0.25)
+        + (work_df['norm_assists'] * 0.15)
+    )
+    work_df['contract_efficiency_score'] = (normalized_performance / salary_millions).fillna(0)
 
     percentiles = work_df['contract_efficiency_score'].quantile([0.4, 0.75]).to_list()
     lower_cutoff, upper_cutoff = percentiles if len(percentiles) == 2 else (0, 0)
 
     def value_tier(score):
         if score >= upper_cutoff:
-            return "Underpaid (High Value)"
+            return "Underpaid"
         if score >= lower_cutoff:
-            return "Fairly Paid"
+            return "Fair"
         return "Overpaid"
 
     work_df['contract_value_label'] = work_df['contract_efficiency_score'].apply(value_tier)
@@ -274,6 +288,31 @@ def load_data():
     df = pd.read_excel('Full_NBA_Dataset.xlsx')
     df = ensure_salary_efficiency_columns(df)
     return df
+
+
+def get_contract_records(base_df):
+    """Return session-scoped contract data with CES columns applied."""
+    if 'contract_records' not in st.session_state:
+        st.session_state.contract_records = calculate_contract_efficiency(base_df)
+    return st.session_state.contract_records
+
+
+def persist_contract_records(updated_df):
+    """Recalculate CES and persist updated contract records back into session state."""
+    st.session_state.contract_records = calculate_contract_efficiency(updated_df)
+    return st.session_state.contract_records
+
+
+def simulate_ces_for_salary(player_name, new_salary, current_df):
+    """Simulate a CES and value label for a player after changing their salary."""
+    work_df = current_df.copy()
+    player_mask = work_df['player_name'] == player_name
+    if not player_mask.any():
+        return None
+
+    work_df.loc[player_mask, 'salary_usd'] = new_salary
+    recalculated_df = calculate_contract_efficiency(work_df)
+    return recalculated_df.loc[player_mask].iloc[0]
 
 
 def format_player_metric(player_data, key, fmt="{:.1f}", default="N/A"):
@@ -797,23 +836,23 @@ elif page == "Contract Efficiency Score":
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
-        ces_df = calculate_contract_efficiency(df)
+        contract_df = get_contract_records(df)
 
         st.markdown("### 🧮 How CES is calculated")
         st.info(
-            "Impact Score = (Points × 60%) + (Rebounds × 25%) + (Assists × 15%)  — scaled by salary in millions to create CES."
+            "Impact Score = normalized points (60%) + rebounds (25%) + assists (15%), divided by salary in millions for a normalized CES."
         )
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric(
                 "Median CES",
-                f"{ces_df['contract_efficiency_score'].median():.2f}",
+                f"{contract_df['contract_efficiency_score'].median():.2f}",
                 help="Higher = more production for every $1M in salary"
             )
 
         with col2:
-            top_player = ces_df.loc[ces_df['contract_efficiency_score'].idxmax()]
+            top_player = contract_df.loc[contract_df['contract_efficiency_score'].idxmax()]
             st.metric(
                 "Top Value Player",
                 top_player['player_name'],
@@ -821,29 +860,132 @@ elif page == "Contract Efficiency Score":
             )
 
         with col3:
-            value_counts = ces_df['contract_value_label'].value_counts()
-            underpaid = value_counts.get("Underpaid (High Value)", 0)
+            value_counts = contract_df['contract_value_label'].value_counts()
+            underpaid = value_counts.get("Underpaid", 0)
             st.metric(
                 "High-Value Contracts",
                 f"{underpaid} players",
                 help="Count of players in the top CES tier"
             )
 
+        with col4:
+            total_cap = contract_df['salary_usd'].sum()
+            st.metric(
+                "Total Salary Commitments",
+                f"${total_cap:,.0f}",
+                help="Updates live as you add or edit contracts"
+            )
+
+        st.markdown("---")
+        st.markdown("### 🛠️ Manage Contracts and Performance (CRUD)")
+
+        management_col1, management_col2 = st.columns(2)
+        with management_col1:
+            st.subheader("Create a Contract")
+            with st.form("create_contract_form"):
+                new_player = st.text_input("Player Name")
+                new_team = st.selectbox("Team", sorted(contract_df['team_name'].dropna().unique()))
+                new_salary = st.number_input("Salary (USD)", min_value=0.0, step=250000.0)
+                new_pts = st.number_input("Points per Game", min_value=0.0, step=0.1)
+                new_reb = st.number_input("Rebounds per Game", min_value=0.0, step=0.1)
+                new_ast = st.number_input("Assists per Game", min_value=0.0, step=0.1)
+                submitted_new = st.form_submit_button("Create Player Contract", use_container_width=True)
+
+            if submitted_new:
+                if new_player.strip() == "":
+                    st.warning("Please provide a player name before creating a contract.")
+                elif new_player in contract_df['player_name'].values:
+                    st.warning("Player already exists. Use the update panel to edit the contract.")
+                else:
+                    base_columns = contract_df.columns
+                    new_record = {col: 0 for col in base_columns}
+                    new_record.update({
+                        'player_name': new_player,
+                        'team_name': new_team,
+                        'salary_usd': new_salary,
+                        'pts': new_pts,
+                        'reb': new_reb,
+                        'assists': new_ast,
+                    })
+                    updated_df = pd.concat([contract_df, pd.DataFrame([new_record])], ignore_index=True)
+                    contract_df = persist_contract_records(updated_df)
+                    st.success(f"Added {new_player} and recalculated CES.")
+
+        with management_col2:
+            st.subheader("Update or Delete")
+            selected_player = st.selectbox("Select Player", contract_df['player_name'].tolist())
+            selected_row = contract_df[contract_df['player_name'] == selected_player].iloc[0]
+
+            new_salary_slider = st.slider(
+                "Simulate Salary (What-if)",
+                min_value=0.0,
+                max_value=float(max(contract_df['salary_usd'].max(), selected_row['salary_usd'])),
+                value=float(selected_row['salary_usd']),
+                step=250000.0,
+                help="Adjust to see updated CES without committing changes",
+            )
+
+            simulated_row = simulate_ces_for_salary(selected_player, new_salary_slider, contract_df)
+            if simulated_row is not None:
+                st.info(
+                    f"Simulated CES: {simulated_row['contract_efficiency_score']:.2f} ({simulated_row['contract_value_label']})"
+                )
+
+            with st.form("update_contract_form"):
+                upd_salary = st.number_input("Salary (USD)", value=float(selected_row['salary_usd']), step=250000.0)
+                upd_pts = st.number_input("Points per Game", value=float(selected_row['pts']), step=0.1)
+                upd_reb = st.number_input("Rebounds per Game", value=float(selected_row['reb']), step=0.1)
+                upd_ast = st.number_input("Assists per Game", value=float(selected_row['assists']), step=0.1)
+                update_btn, delete_btn = st.columns(2)
+                with update_btn:
+                    submitted_update = st.form_submit_button("Update", use_container_width=True)
+                with delete_btn:
+                    submitted_delete = st.form_submit_button("Delete", use_container_width=True)
+
+            if submitted_update:
+                contract_df.loc[contract_df['player_name'] == selected_player, ['salary_usd', 'pts', 'reb', 'assists']] = [
+                    upd_salary,
+                    upd_pts,
+                    upd_reb,
+                    upd_ast,
+                ]
+                contract_df = persist_contract_records(contract_df)
+                st.success(f"Updated {selected_player} and recalculated CES.")
+
+            if submitted_delete:
+                contract_df = persist_contract_records(
+                    contract_df[contract_df['player_name'] != selected_player].reset_index(drop=True)
+                )
+                st.success(f"Deleted {selected_player} and refreshed the leaderboard.")
+
         st.markdown("---")
         st.markdown("### 🧭 CES Classifications")
         st.caption("Automatically labels each contract based on percentile cutoffs of CES.")
 
         label_colors = {
-            "Underpaid (High Value)": "#4CAF50",
-            "Fairly Paid": "#FFC107",
+            "Underpaid": "#4CAF50",
+            "Fair": "#FFC107",
             "Overpaid": "#F44336",
         }
 
         for label, color in label_colors.items():
             st.markdown(
-                f"<div class='stat-box' style='border-left-color:{color};'><strong style='color:{color};'>{label}:</strong> {ces_df[ces_df['contract_value_label'] == label].shape[0]} players</div>",
+                f"<div class='stat-box' style='border-left-color:{color};'><strong style='color:{color};'>{label}:</strong> {contract_df[contract_df['contract_value_label'] == label].shape[0]} players</div>",
                 unsafe_allow_html=True
             )
+
+        st.markdown("### 💰 Team Salary Cap Snapshot")
+        cap_df = contract_df.groupby('team_name', as_index=False)['salary_usd'].sum().rename(columns={'salary_usd': 'team_salary_total'})
+        cap_df = cap_df.sort_values('team_salary_total', ascending=False)
+        st.dataframe(
+            cap_df,
+            use_container_width=True,
+            height=300,
+            column_config={
+                'team_salary_total': st.column_config.NumberColumn("Team Salary Total", format="$%,d"),
+                'team_name': st.column_config.TextColumn("Team"),
+            },
+        )
 
         st.markdown("---")
         st.markdown("### 📋 CES Leaderboard (Best to Worst Value)")
@@ -859,7 +1001,7 @@ elif page == "Contract Efficiency Score":
             'assists',
         ]
 
-        leaderboard_df = ces_df[display_cols].sort_values(
+        leaderboard_df = contract_df[display_cols].sort_values(
             by='contract_efficiency_score', ascending=False
         )
         leaderboard_df = leaderboard_df.rename(columns={
