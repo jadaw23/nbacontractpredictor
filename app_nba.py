@@ -373,7 +373,7 @@ page = st.sidebar.radio(
         "Project Summary",
         "Player Search",
         "Analytics",
-        "🔥 Add to Contract Efficiency Score",
+        "Contract Efficiency Score",
         "LLM Chat",
     ],
     help="Select a page to navigate"
@@ -745,7 +745,7 @@ elif page == "Analytics":
 # ============================================
 # TOP FEATURE - CONTRACT EFFICIENCY SCORE
 # ============================================
-elif page == "🔥 Top Feature to Add (Most Impressive)":
+elif page == "Contract Efficiency Score":
     st.markdown("# 🔥 Contract Efficiency Score (CES)")
     st.markdown("---")
 
