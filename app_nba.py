@@ -677,6 +677,19 @@ if page == "Project Summary":
     st.markdown("---")
 
     if data_loaded:
+        st.markdown(
+            """
+            <div style='display:flex; align-items:center; gap:16px; padding:18px; border-radius:18px; background:linear-gradient(120deg, #0B60B0, #F84F31); color:white; box-shadow:0 8px 20px rgba(0,0,0,0.15);'>
+                <img src="https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg" width="70" alt="NBA Logo">
+                <div>
+                    <div style='font-size:1.2em; font-weight:700; letter-spacing:0.03em;'>NBA Player Impact Hub</div>
+                    <div style='opacity:0.9;'>Visualize contracts, compare stars, and explore trades with real-time storytelling visuals.</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.markdown("### 🏀 NBA Statistics Overview")
         
         col1, col2, col3, col4 = st.columns(4)
@@ -779,36 +792,6 @@ if page == "Project Summary":
             salary_fig.update_traces(text=top_salary['salary_usd'].apply(lambda val: f"${val:,.0f}"), textposition='outside')
             salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False)
             st.plotly_chart(salary_fig, use_container_width=True)
-
-    st.markdown("---")
-
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.subheader("🎯 Approach and Implementation")
-
-        st.write("""
-        This NBA dashboard was built using Streamlit and Pandas to analyze player statistics 
-        and salary data. We designed the application to load data from an Excel file and provide 
-        interactive filtering and visualization capabilities. We used Plotly Express for creating the 
-        scatter plot visualization which allows for interactive exploration of the relationship 
-        between salary per point and salary per game. The dashboard demonstrates CRUD-like read operations and analytics visualizations as required.
-        """)
-
-    with col2:
-        st.subheader("🎨 Customizations Made")
-
-        st.write("""
-        We customized this application in several ways:
-        
-        1. **Layout:** Used Streamlit's column layout for organized displays.
-        
-        2. **Visualizations:** Interactive Plotly scatter plot with hover information.
-        
-        3. **Data Display:** Formatted DataFrames with custom styling.
-        
-        4. **Statistics:** Dynamic stats cards showing key metrics.
-        """)
 
     st.markdown("### 🛠️ Technologies Used")
     col1, col2, col3 = st.columns(3)
