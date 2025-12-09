@@ -99,6 +99,12 @@ if 'plot_click_player' not in st.session_state:
     st.session_state.plot_click_player = None
 if 'analytics_click_player' not in st.session_state:
     st.session_state.analytics_click_player = None
+if 'trade_proposals' not in st.session_state:
+    st.session_state.trade_proposals = []
+if 'trade_editor' not in st.session_state:
+    st.session_state.trade_editor = None
+if 'trade_prefill' not in st.session_state:
+    st.session_state.trade_prefill = False
 
 # Custom CSS
 st.markdown("""
@@ -315,6 +321,89 @@ def simulate_ces_for_salary(player_name, new_salary, current_df):
     return recalculated_df.loc[player_mask].iloc[0]
 
 
+# ========================
+# Trade evaluation helpers
+# ========================
+SALARY_CAP = 136_021_000  # Approximate 2024-25 NBA salary cap
+LUXURY_TAX = 165_294_000  # Approximate 2024-25 luxury tax threshold
+
+
+def compute_team_financials(team_name, roster_df):
+    """Aggregate team financial metrics from the provided roster dataframe."""
+    team_df = roster_df[roster_df['team_name'] == team_name]
+    total_salary = team_df['salary_usd'].sum()
+    average_ces = team_df['contract_efficiency_score'].mean() if not team_df.empty else 0
+    return {
+        'salary': total_salary,
+        'cap_room': SALARY_CAP - total_salary,
+        'luxury_tax_exposure': max(0, total_salary - LUXURY_TAX),
+        'average_ces': average_ces,
+        'player_count': len(team_df),
+    }
+
+
+def apply_trade_to_roster(trade, roster_df):
+    """Return a new dataframe with the trade applied to player team assignments."""
+    updated_df = roster_df.copy()
+    # Move Team A outgoing players to Team B
+    if trade['outgoing_a']:
+        updated_df.loc[updated_df['player_name'].isin(trade['outgoing_a']), ['team_name', 'team_key']] = (
+            trade['team_b'], trade['team_b']
+        )
+    # Move Team B outgoing players to Team A
+    if trade['outgoing_b']:
+        updated_df.loc[updated_df['player_name'].isin(trade['outgoing_b']), ['team_name', 'team_key']] = (
+            trade['team_a'], trade['team_a']
+        )
+    return updated_df
+
+
+def evaluate_trade(trade, roster_df):
+    """Compute before/after salary cap and CES impact for a trade."""
+    base_metrics = {
+        trade['team_a']: compute_team_financials(trade['team_a'], roster_df),
+        trade['team_b']: compute_team_financials(trade['team_b'], roster_df),
+    }
+
+    updated_df = apply_trade_to_roster(trade, roster_df)
+    post_metrics = {
+        trade['team_a']: compute_team_financials(trade['team_a'], updated_df),
+        trade['team_b']: compute_team_financials(trade['team_b'], updated_df),
+    }
+
+    violations = []
+    for team, metrics in post_metrics.items():
+        if metrics['salary'] > LUXURY_TAX:
+            violations.append(f"{team}: Luxury tax exposure of ${metrics['luxury_tax_exposure']:,.0f}")
+        if metrics['salary'] > SALARY_CAP:
+            violations.append(f"{team}: Exceeds salary cap by ${metrics['salary'] - SALARY_CAP:,.0f}")
+
+    trade_summary = {
+        'before': base_metrics,
+        'after': post_metrics,
+        'violations': violations,
+    }
+    return trade_summary
+
+
+def validate_trade(trade, roster_df):
+    """Validate trade structure and return a list of errors if invalid."""
+    errors = []
+    if trade['team_a'] == trade['team_b']:
+        errors.append("Both sides cannot be the same team.")
+
+    all_players = set(roster_df['player_name'])
+    unknown = [p for p in (trade['outgoing_a'] + trade['outgoing_b']) if p not in all_players]
+    if unknown:
+        errors.append(f"Unknown players selected: {', '.join(unknown)}")
+
+    overlap = set(trade['outgoing_a']).intersection(trade['outgoing_b'])
+    if overlap:
+        errors.append(f"Players cannot be traded from both sides: {', '.join(overlap)}")
+
+    return errors
+
+
 def format_player_metric(player_data, key, fmt="{:.1f}", default="N/A"):
     """Format a player's metric safely, returning a friendly fallback when missing."""
     if key in player_data.index and pd.notnull(player_data[key]):
@@ -412,6 +501,7 @@ page = st.sidebar.radio(
         "Project Summary",
         "Player Search",
         "Analytics",
+        "Trade Approval",
         "Contract Efficiency Score",
         "LLM Chat",
     ],
@@ -814,6 +904,187 @@ elif page == "Analytics":
                     </div>
                 </div>
             """, unsafe_allow_html=True)
+
+
+# ============================================
+# TRADE APPROVAL AND SALARY CAP VALIDATION
+# ============================================
+elif page == "Trade Approval":
+    st.markdown("# 🤝 Trade Approval & Cap Validator")
+    st.markdown("---")
+
+    if not data_loaded:
+        st.error("Data not loaded. Please check your data file.")
+    else:
+        roster_df = get_contract_records(df)
+        teams = sorted(roster_df['team_name'].unique().tolist())
+
+        if st.session_state.trade_prefill and st.session_state.trade_editor:
+            editor = st.session_state.trade_editor
+            st.session_state.trade_name_input = editor['name']
+            st.session_state.trade_team_a = editor['team_a']
+            st.session_state.trade_team_b = editor['team_b']
+            st.session_state.trade_outgoing_a = editor['outgoing_a']
+            st.session_state.trade_outgoing_b = editor['outgoing_b']
+            st.session_state.trade_notes = editor.get('notes', '')
+            st.session_state.trade_prefill = False
+
+        st.session_state.setdefault('trade_name_input', f"Proposal {len(st.session_state.trade_proposals) + 1}")
+        st.session_state.setdefault('trade_team_a', teams[0] if teams else '')
+        st.session_state.setdefault('trade_team_b', teams[1] if len(teams) > 1 else teams[0] if teams else '')
+        st.session_state.setdefault('trade_outgoing_a', [])
+        st.session_state.setdefault('trade_outgoing_b', [])
+        st.session_state.setdefault('trade_notes', '')
+
+        st.info(
+            f"Salary Cap: ${SALARY_CAP:,.0f} • Luxury Tax: ${LUXURY_TAX:,.0f}. "
+            "Every proposal is validated for cap room, luxury tax exposure, and CES impact."
+        )
+
+        team_a = st.selectbox("Team A (sends players)", teams, key="trade_team_a")
+        team_b = st.selectbox("Team B (sends players)", teams, key="trade_team_b")
+
+        team_a_players = roster_df[roster_df['team_name'] == team_a]['player_name'].tolist()
+        team_b_players = roster_df[roster_df['team_name'] == team_b]['player_name'].tolist()
+
+        col_left, col_right = st.columns(2)
+        with col_left:
+            trade_name = st.text_input("Trade Title", key="trade_name_input")
+            outgoing_a = st.multiselect(
+                f"{team_a} sends", team_a_players, key="trade_outgoing_a"
+            )
+            notes = st.text_area("Notes / rationale", key="trade_notes")
+
+        with col_right:
+            st.markdown("### Players Coming Back to Team A")
+            outgoing_b = st.multiselect(
+                f"{team_b} sends", team_b_players, key="trade_outgoing_b"
+            )
+            st.caption("Select players Team B trades to Team A. Salary matching and cap impact are computed automatically.")
+
+        pending_trade = {
+            'id': st.session_state.trade_editor['id'] if st.session_state.trade_editor else None,
+            'name': trade_name.strip() or "Untitled Trade",
+            'team_a': team_a,
+            'team_b': team_b,
+            'outgoing_a': outgoing_a,
+            'outgoing_b': outgoing_b,
+            'notes': notes,
+        }
+
+        validation_errors = validate_trade(pending_trade, roster_df)
+        trade_preview = None
+        if not validation_errors:
+            trade_preview = evaluate_trade(pending_trade, roster_df)
+
+        status_cols = st.columns(3)
+        legality = "✅ Legal" if not validation_errors and (not trade_preview or not trade_preview['violations']) else "⚠️ Needs review"
+        with status_cols[0]:
+            st.metric("Trade Status", legality)
+        with status_cols[1]:
+            if validation_errors:
+                st.metric("Validation", "Errors Found", delta=len(validation_errors))
+            elif trade_preview and trade_preview['violations']:
+                st.metric("Cap Check", "Violations", delta=len(trade_preview['violations']))
+            else:
+                st.metric("Cap Check", "Clean")
+        with status_cols[2]:
+            if trade_preview:
+                total_salary_shift = (
+                    trade_preview['after'][team_a]['salary'] - trade_preview['before'][team_a]['salary']
+                ) - (
+                    trade_preview['after'][team_b]['salary'] - trade_preview['before'][team_b]['salary']
+                )
+                st.metric("Total Salary Delta", f"${total_salary_shift:,.0f}")
+
+        if validation_errors:
+            st.error("Illegal trade: " + "; ".join(validation_errors))
+
+        if trade_preview:
+            st.markdown("### Salary Cap & CES Impact")
+            team_a_cols = st.columns(2)
+            for idx, team in enumerate([team_a, team_b]):
+                before = trade_preview['before'][team]
+                after = trade_preview['after'][team]
+                container = team_a_cols[idx]
+                with container:
+                    st.subheader(f"{team} (Players: {after['player_count']})")
+                    st.metric("Salary Before", f"${before['salary']:,.0f}")
+                    st.metric("Salary After", f"${after['salary']:,.0f}", delta=f"${after['salary'] - before['salary']:,.0f}")
+                    st.metric("Cap Room After", f"${after['cap_room']:,.0f}")
+                    st.metric("Luxury Tax Exposure", f"${after['luxury_tax_exposure']:,.0f}")
+                    st.metric("Avg CES", f"{after['average_ces']:.2f}", delta=f"{after['average_ces'] - before['average_ces']:.2f}")
+
+            if trade_preview['violations']:
+                st.warning("⚠️ Cap Violations: " + "; ".join(trade_preview['violations']))
+            else:
+                st.success("Trade passes cap and luxury tax checks.")
+
+        save_col, reset_col = st.columns([1, 1])
+        with save_col:
+            if st.button("Save Trade Proposal", type="primary"):
+                if validation_errors:
+                    st.error("Cannot save an illegal trade. Please resolve the errors above.")
+                else:
+                    analysis = trade_preview or evaluate_trade(pending_trade, roster_df)
+                    proposal = pending_trade | {
+                        'id': pending_trade['id'] or len(st.session_state.trade_proposals) + 1,
+                        'analysis': analysis,
+                        'created_at': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    }
+
+                    if pending_trade['id']:
+                        st.session_state.trade_proposals = [
+                            proposal if p['id'] == pending_trade['id'] else p for p in st.session_state.trade_proposals
+                        ]
+                        st.success("Trade updated successfully.")
+                    else:
+                        st.session_state.trade_proposals.append(proposal)
+                        st.success("Trade saved successfully.")
+
+                    st.session_state.trade_editor = None
+                    st.session_state.trade_prefill = False
+        with reset_col:
+            if st.button("Reset Form"):
+                st.session_state.trade_editor = None
+                st.session_state.trade_prefill = False
+                st.session_state.trade_name_input = f"Proposal {len(st.session_state.trade_proposals) + 1}"
+                st.session_state.trade_outgoing_a = []
+                st.session_state.trade_outgoing_b = []
+                st.session_state.trade_notes = ""
+
+        st.markdown("---")
+        st.markdown("### 📋 Saved Trade Proposals")
+        if not st.session_state.trade_proposals:
+            st.info("No saved trades yet. Create a trade above to see it listed here.")
+        else:
+            options = {f"#{p['id']} - {p['name']}": p for p in st.session_state.trade_proposals}
+            selected_label = st.selectbox("Review proposal", list(options.keys()))
+            selected_trade = options[selected_label]
+
+            detail_cols = st.columns([2, 1])
+            with detail_cols[0]:
+                st.write(f"**Created:** {selected_trade['created_at']}")
+                st.write(f"**Teams:** {selected_trade['team_a']} ↔ {selected_trade['team_b']}")
+                st.write(f"**{selected_trade['team_a']} sends:** {', '.join(selected_trade['outgoing_a']) or 'None'}")
+                st.write(f"**{selected_trade['team_b']} sends:** {', '.join(selected_trade['outgoing_b']) or 'None'}")
+                if selected_trade.get('notes'):
+                    st.write(f"**Notes:** {selected_trade['notes']}")
+            with detail_cols[1]:
+                st.metric("Cap Delta (Team A)", f"${selected_trade['analysis']['after'][selected_trade['team_a']]['cap_room']:,.0f}")
+                st.metric("Cap Delta (Team B)", f"${selected_trade['analysis']['after'][selected_trade['team_b']]['cap_room']:,.0f}")
+
+            manage_cols = st.columns(2)
+            with manage_cols[0]:
+                if st.button("Load for Editing"):
+                    st.session_state.trade_editor = selected_trade
+                    st.session_state.trade_prefill = True
+                    st.experimental_rerun()
+            with manage_cols[1]:
+                if st.button("Delete Trade", type="secondary"):
+                    st.session_state.trade_proposals = [p for p in st.session_state.trade_proposals if p['id'] != selected_trade['id']]
+                    st.success("Trade deleted.")
+                    st.experimental_rerun()
 
 
 # ============================================
