@@ -513,8 +513,8 @@ if page == "Project Summary":
                 labels={'player_name': 'Player', 'pts': 'Points per Game', 'team_name': 'Team'},
                 text='pts',
             )
-            ppg_fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-            ppg_fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, uniformtext_minsize=8)
+            ppg_fig.update_traces(text=top_ppg['pts'].apply(lambda pts: f"{pts:.1f}"), textposition='outside')
+            ppg_fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False)
             st.plotly_chart(ppg_fig, use_container_width=True)
 
         with col_salary:
@@ -527,8 +527,8 @@ if page == "Project Summary":
                 labels={'player_name': 'Player', 'salary_usd': 'Salary (USD)', 'team_name': 'Team'},
                 text='salary_usd',
             )
-            salary_fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
-            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False, uniformtext_minsize=8)
+            salary_fig.update_traces(text=top_salary['salary_usd'].apply(lambda val: f"${val:,.0f}"), textposition='outside')
+            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False)
             st.plotly_chart(salary_fig, use_container_width=True)
 
     st.markdown("---")
