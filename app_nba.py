@@ -253,12 +253,18 @@ def calculate_contract_efficiency(df):
     salary_millions = salary_millions.replace({0: pd.NA})
 
     impact_score = (work_df['pts'] * 0.6) + (work_df['reb'] * 0.25) + (work_df['assists'] * 0.15)
-    work_df['contract_efficiency_score'] = (impact_score / salary_millions).fillna(0)
+    work_df['contract_efficiency_score'] = impact_score.divide(salary_millions).replace([pd.NA, pd.NaT], 0).fillna(0)
 
-    percentiles = work_df['contract_efficiency_score'].quantile([0.4, 0.75]).to_list()
-    lower_cutoff, upper_cutoff = percentiles if len(percentiles) == 2 else (0, 0)
+    valid_scores = work_df.loc[work_df['contract_efficiency_score'] > 0, 'contract_efficiency_score']
+    if not valid_scores.empty:
+        lower_cutoff = valid_scores.quantile(0.4)
+        upper_cutoff = valid_scores.quantile(0.75)
+    else:
+        lower_cutoff = upper_cutoff = 0
 
     def value_tier(score):
+        if score <= 0:
+            return "Data Needed"
         if score >= upper_cutoff:
             return "Underpaid (High Value)"
         if score >= lower_cutoff:
@@ -373,8 +379,8 @@ page = st.sidebar.radio(
         "Project Summary",
         "Player Search",
         "Analytics",
-        "Contract Effieciency Score",
-        "Chat 67 ",
+        "Contract Efficiency Score",
+        "Chat 67",
     ],
     help="Select a page to navigate"
 )
@@ -745,7 +751,7 @@ elif page == "Analytics":
 # ============================================
 # TOP FEATURE - CONTRACT EFFICIENCY SCORE
 # ============================================
-elif page == "🔥 Top Feature to Add (Most Impressive)":
+elif page == "🔥 contract efficiency score":
     st.markdown("# 🔥 Contract Efficiency Score (CES)")
     st.markdown("---")
 
@@ -802,6 +808,7 @@ elif page == "🔥 Top Feature to Add (Most Impressive)":
             "Underpaid (High Value)": "#4CAF50",
             "Fairly Paid": "#FFC107",
             "Overpaid": "#F44336",
+            "Data Needed": "#9E9E9E",
         }
 
         for label, color in label_colors.items():
@@ -852,11 +859,11 @@ elif page == "🔥 Top Feature to Add (Most Impressive)":
 # ============================================
 # LLM CHAT
 # ============================================
-if page == "LLM Chat":
+if page == "Chat 67":
     st.markdown("# 💬 Chat 67")
     st.markdown("### Ask questions about NBA")
     st.markdown("---")
-    
+
     if not data_loaded:
         st.error("Data not loaded. Please check your data file.")
     else:
@@ -874,8 +881,12 @@ if page == "LLM Chat":
             - "What is the average points per player?"
             - "Which team has the highest average points?"
             """)
-        
-        user_query = st.text_input("Enter your question:", placeholder="e.g., Show me the top 10 scorers")
+
+        user_query = st.text_input(
+            "Enter your question:",
+            placeholder="e.g., Show me the top 10 scorers",
+            key="chat_user_query",
+        )
         
         col1, col2 = st.columns([1, 5])
         with col1:
@@ -885,30 +896,39 @@ if page == "LLM Chat":
                 st.session_state.chat_history = []
                 st.rerun()
         
-        if submit_query and user_query:
-            st.session_state.chat_history.append({
-                'role': 'user',
-                'content': user_query,
-                'timestamp': datetime.now().strftime('%H:%M:%S')
-            })
-            
-            result_df, sql_query = execute_natural_language_query(user_query, df)
-            
-            if result_df is not None:
-                response = f"Here are the results for your query:\n\n**Generated SQL:** `{sql_query}`"
-                st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': response,
-                    'data': result_df,
-                    'timestamp': datetime.now().strftime('%H:%M:%S')
-                })
+        if submit_query:
+            if not user_query.strip():
+                st.warning("Please enter a question before submitting.")
             else:
-                error_response = f"❌ {sql_query}"
                 st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': error_response,
+                    'role': 'user',
+                    'content': user_query,
                     'timestamp': datetime.now().strftime('%H:%M:%S')
                 })
+
+                result_df, sql_query = execute_natural_language_query(user_query, df)
+
+                if result_df is not None:
+                    preview = result_df.head(3)
+                    response = (
+                        "Here are the results for your query.\n\n"
+                        f"**Generated SQL:** `{sql_query}`\n"
+                        f"**Rows returned:** {len(result_df)}"
+                    )
+                    st.session_state.chat_history.append({
+                        'role': 'assistant',
+                        'content': response,
+                        'data': result_df,
+                        'preview': preview,
+                        'timestamp': datetime.now().strftime('%H:%M:%S')
+                    })
+                else:
+                    error_response = f"❌ {sql_query}"
+                    st.session_state.chat_history.append({
+                        'role': 'assistant',
+                        'content': error_response,
+                        'timestamp': datetime.now().strftime('%H:%M:%S')
+                    })
         
         st.markdown("---")
         st.markdown("### 💬 Conversation History")
