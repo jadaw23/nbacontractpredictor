@@ -760,8 +760,18 @@ if page == "Project Summary":
 
         st.markdown("### 📊 Quick Player Insights")
 
-        top_ppg = df.nlargest(10, 'pts')[['player_name', 'pts', 'team_name']]
-        top_salary = df.nlargest(10, 'salary_usd')[['player_name', 'salary_usd', 'team_name']]
+        # Use each player's best stat line to avoid duplicate rows showing identical values
+        ppg_leader_rows = (
+            df.sort_values('pts', ascending=False)
+              .drop_duplicates(subset='player_name')
+        )
+        salary_leader_rows = (
+            df.sort_values('salary_usd', ascending=False)
+              .drop_duplicates(subset='player_name')
+        )
+
+        top_ppg = ppg_leader_rows.nlargest(10, 'pts')[['player_name', 'pts', 'team_name']]
+        top_salary = salary_leader_rows.nlargest(10, 'salary_usd')[['player_name', 'salary_usd', 'team_name']]
 
         col_ppg, col_salary = st.columns(2)
 
@@ -789,8 +799,16 @@ if page == "Project Summary":
                 labels={'player_name': 'Player', 'salary_usd': 'Salary (USD)', 'team_name': 'Team'},
                 text='salary_usd',
             )
-            salary_fig.update_traces(text=top_salary['salary_usd'].apply(lambda val: f"${val:,.0f}"), textposition='outside')
-            salary_fig.update_layout(xaxis_tickangle=-45, height=400, yaxis_tickformat='$,', showlegend=False)
+            salary_fig.update_traces(
+                text=top_salary['salary_usd'].apply(lambda val: f"${val/1_000_000:,.1f}M"),
+                textposition='outside',
+            )
+            salary_fig.update_layout(
+                xaxis_tickangle=-45,
+                height=400,
+                yaxis_tickformat='$,.0f',
+                showlegend=False,
+            )
             st.plotly_chart(salary_fig, use_container_width=True)
 
     st.markdown("### 🛠️ Technologies Used")
