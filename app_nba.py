@@ -373,8 +373,8 @@ page = st.sidebar.radio(
         "Project Summary",
         "Player Search",
         "Analytics",
-        "Contract Effieciency Score",
-        "Chat 67 ",
+        "🔥 Top Feature to Add (Most Impressive)",
+        "LLM Chat",
     ],
     help="Select a page to navigate"
 )
